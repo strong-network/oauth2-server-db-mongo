@@ -500,3 +500,9 @@ type tokenData struct {
 	BasicID   string    `bson:"BasicID"`
 	ExpiredAt time.Time `bson:"ExpiredAt"`
 }
+
+type tokenWrapper struct {
+	tokenData 		*models.Token	`bson:"BasicData"`
+	timeLastUsed	time.Time		`bson:"LastUsed"`
+	userAgent		string			`bson:"UserAgent"`
+}
