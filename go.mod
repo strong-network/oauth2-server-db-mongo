@@ -1,4 +1,4 @@
-module gopkg.in/go-oauth2/oauth2-server-db-mongo
+module github.com/strong-network/oauth2-server-db-mongo
 
 go 1.13
 
