@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/go-oauth2/oauth2/v4"
@@ -176,6 +177,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 		basicData := basicData{
 			ID:        code,
 			Data:      jv,
+			UserID:	   info.GetUserID(),
 			ExpiredAt: info.GetCodeCreateAt().Add(info.GetCodeExpiresIn()),
 		}
 
@@ -202,6 +204,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	basicData := basicData{
 		ID:        id,
 		Data:      jv,
+		UserID:	   info.GetUserID(),
 		ExpiredAt: rexp,
 	}
 
@@ -287,6 +290,58 @@ func (ts *TokenStore) RemoveByCode(ctx context.Context, code string) (err error)
 	return
 }
 
+// RemoveByUserID use the user ID to delete all of specified users token information
+func (ts *TokenStore) RemoveByUserID(ctx context.Context, userID uint64) (err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	userIDString := strconv.FormatUint(userID, 10)
+	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "UserID", Value: userIDString}})
+	if err != nil {
+		log.Println("Error RemoveByUserID: ", err)
+	}
+	return
+}
+
+// RemoveByTokenID use the token ID to delete the token information
+func (ts *TokenStore) RemoveByTokenID(ctx context.Context, tokenID uint64) (err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	tokenIDString := strconv.FormatUint(tokenID, 16)
+	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: tokenIDString}})
+	if err != nil {
+		log.Println("Error RemoveByTokenID: ", err)
+	}
+	return
+}
+
+// RemoveMultipleByTokenID use the token IDs to delete the token information
+func (ts *TokenStore) RemoveMultipleByTokenID(ctx context.Context, tokenIDs []uint64) (err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var elements bson.A
+	for _, id := range tokenIDs {
+		elements = append(elements, bson.E{Key: "_id", Value: strconv.FormatUint(id, 16)})
+	}
+	filter := bson.D{{Key: "_id", Value: bson.D{{Key: "$in", Value: elements}}}}
+	_, err = ts.c(ts.tcfg.BasicCName).DeleteMany(ctx, filter)
+	if err != nil {
+		log.Println("Error RemoveMultipleByTokenID: ", err)
+	}
+	return
+}
+
 // RemoveByAccess use the access token to delete the token information
 func (ts *TokenStore) RemoveByAccess(ctx context.Context, access string) (err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
@@ -343,6 +398,45 @@ func (ts *TokenStore) getData(basicID string) (ti oauth2.TokenInfo, err error) {
 	return
 }
 
+func (ts *TokenStore) getUserTokens(userID uint64) (ti []oauth2.TokenInfo, err error) {
+	ctx := context.Background()
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	userIDString := strconv.FormatUint(userID, 10)
+	cursor, err := ts.c(ts.tcfg.BasicCName).Find(ctx, bson.D{{Key: "UserID", Value: userIDString}})
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			log.Printf("getUserTokens: No tokens found for user %d\n", userID)
+			return nil, nil
+		}
+		log.Println("Error getUserTokens: ", err)
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var bd basicData
+		err = cursor.Decode(&bd)
+		if err != nil {
+			log.Println("Error getUserTokens: ", err)
+			return
+		}
+
+		var tm models.Token
+		err = json.Unmarshal(bd.Data, &tm)
+		if err != nil {
+			log.Println("Error getUserTokens: ", err)
+			return
+		}
+		ti = append(ti, &tm)
+	}
+	return
+}
+
 func (ts *TokenStore) getBasicID(cname, token string) (basicID string, err error) {
 	ctx := context.Background()
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
@@ -389,9 +483,15 @@ func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oaut
 	return
 }
 
+func (ts *TokenStore) GetByUserID(ctx context.Context, userID uint64) (ti []oauth2.TokenInfo, err error) {
+	ti, err = ts.getUserTokens(userID)
+	return
+}
+
 type basicData struct {
 	ID        string    `bson:"_id"`
 	Data      []byte    `bson:"Data"`
+	UserID	  string	`bson:"UserID"`
 	ExpiredAt time.Time `bson:"ExpiredAt"`
 }
 
@@ -399,4 +499,10 @@ type tokenData struct {
 	ID        string    `bson:"_id"`
 	BasicID   string    `bson:"BasicID"`
 	ExpiredAt time.Time `bson:"ExpiredAt"`
+}
+
+type tokenWrapper struct {
+	tokenData 		*models.Token	`bson:"BasicData"`
+	timeLastUsed	time.Time		`bson:"LastUsed"`
+	userAgent		string			`bson:"UserAgent"`
 }
