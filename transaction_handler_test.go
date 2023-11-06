@@ -30,7 +30,7 @@ func TestTransaction(t *testing.T) {
 		RefreshExpiresIn: time.Second * 15,
 	}
 
-	basicData := basicData{
+	basicData := BasicData{
 		ID:        "functionName",
 		Data:      []byte("success"),
 		ExpiredAt: time.Now(),
@@ -239,7 +239,7 @@ func TestTransaction(t *testing.T) {
 // mock the transactionWorker
 type mockTransactionWorker struct{}
 
-func (mt *mockTransactionWorker) insertBasicData(ctx context.Context, basicData basicData) error {
+func (mt *mockTransactionWorker) insertBasicData(ctx context.Context, basicData BasicData) error {
 	record = append(record, "insertBasicData")
 	if basicData.ID == "insertBasicData" {
 		if string(basicData.Data) == "success" {

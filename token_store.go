@@ -174,7 +174,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 
 	if code := info.GetCode(); code != "" {
 		// Create the basicData document
-		basicData := basicData{
+		basicData := BasicData{
 			ID:        code,
 			Data:      jv,
 			UserID:	   info.GetUserID(),
@@ -201,7 +201,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	id := primitive.NewObjectID().Hex()
 
 	// Create the basicData document
-	basicData := basicData{
+	basicData := BasicData{
 		ID:        id,
 		Data:      jv,
 		UserID:	   info.GetUserID(),
@@ -380,7 +380,7 @@ func (ts *TokenStore) getData(basicID string) (ti oauth2.TokenInfo, err error) {
 		ctx = ctxReq
 	}
 
-	var bd basicData
+	var bd BasicData
 	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basicID}}).Decode(&bd)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -398,7 +398,7 @@ func (ts *TokenStore) getData(basicID string) (ti oauth2.TokenInfo, err error) {
 	return
 }
 
-func (ts *TokenStore) getUserTokens(userID uint64) (ti []oauth2.TokenInfo, err error) {
+func (ts *TokenStore) getUserTokens(userID uint64) (ti []BasicData, err error) {
 	ctx := context.Background()
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -419,20 +419,13 @@ func (ts *TokenStore) getUserTokens(userID uint64) (ti []oauth2.TokenInfo, err e
 	defer cursor.Close(ctx)
 
 	for cursor.Next(ctx) {
-		var bd basicData
+		var bd BasicData
 		err = cursor.Decode(&bd)
 		if err != nil {
 			log.Println("Error getUserTokens: ", err)
 			return
 		}
-
-		var tm models.Token
-		err = json.Unmarshal(bd.Data, &tm)
-		if err != nil {
-			log.Println("Error getUserTokens: ", err)
-			return
-		}
-		ti = append(ti, &tm)
+		ti = append(ti, bd)
 	}
 	return
 }
@@ -483,26 +476,23 @@ func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oaut
 	return
 }
 
-func (ts *TokenStore) GetByUserID(ctx context.Context, userID uint64) (ti []oauth2.TokenInfo, err error) {
+func (ts *TokenStore) GetByUserID(ctx context.Context, userID uint64) (ti []BasicData, err error) {
 	ti, err = ts.getUserTokens(userID)
 	return
 }
 
-type basicData struct {
-	ID        string    `bson:"_id"`
-	Data      []byte    `bson:"Data"`
-	UserID	  string	`bson:"UserID"`
-	ExpiredAt time.Time `bson:"ExpiredAt"`
+type BasicData struct {
+	ID        	string    `bson:"_id"`
+	Data      	[]byte    `bson:"Data"`
+	UserID	  	string	  `bson:"UserID"`
+	Device		string	  `bson:"Device"`
+	IDEType		string	  `bson:"IDE"`
+	LastUsedAt	time.Time `bson:"LastUsedAt"`
+	ExpiredAt 	time.Time `bson:"ExpiredAt"`
 }
 
 type tokenData struct {
 	ID        string    `bson:"_id"`
 	BasicID   string    `bson:"BasicID"`
 	ExpiredAt time.Time `bson:"ExpiredAt"`
-}
-
-type tokenWrapper struct {
-	tokenData 		*models.Token	`bson:"BasicData"`
-	timeLastUsed	time.Time		`bson:"LastUsed"`
-	userAgent		string			`bson:"UserAgent"`
 }
