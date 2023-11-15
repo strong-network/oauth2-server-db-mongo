@@ -14,8 +14,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
-	"strong.network/go/auth/headers"
-	pbCommon "strong.network/go/proto/common"
 )
 
 // TokenConfig token configuration parameters
@@ -31,7 +29,14 @@ type TokenConfig struct {
 	storeConfig  *StoreConfig
 }
 
-type ContextKey struct {}
+// DeviceNameContextKey device name key to get/set from context
+type DeviceNameContextKey struct{}
+
+// OAuth2TokenLastUsedContextKey last used time key to get/set from context
+type OAuth2TokenLastUsedContextKey struct{}
+
+// OAuth2TokenLastUsedContextKey IDE name key to get/set from context
+type IDENameContextKey struct{}
 
 // NewDefaultTokenConfig create a default token configuration
 func NewDefaultTokenConfig(strConfig *StoreConfig) *TokenConfig {
@@ -174,7 +179,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	deviceName, ideType, lastUsed := fetchUIDataFromContext(ctx)
 	uiDataUnmarshalled := UIData {
 		Device: deviceName,
-		IDEType: int32(ideType),
+		IDEType: ideType,
 		LastUsedAt: lastUsed,
 	}
 	uiData, err := json.Marshal(uiDataUnmarshalled)
@@ -569,14 +574,14 @@ func (ts *TokenStore) GetByUserID(ctx context.Context, userID uint64) (ti []OAut
 	return
 }
 
-func fetchUIDataFromContext(ctx context.Context) (device string, ide pbCommon.IDEType, lastUsedAt time.Time) {
-	if val, ok := ctx.Value(headers.DeviceNameContextKey{}).(string); ok {
+func fetchUIDataFromContext(ctx context.Context) (device string, ide int32, lastUsedAt time.Time) {
+	if val, ok := ctx.Value(DeviceNameContextKey{}).(string); ok {
 		device = val
 	}
-	if val, ok := ctx.Value(headers.OAuth2TokenLastUsedContextKey{}).(time.Time); ok {
+	if val, ok := ctx.Value(OAuth2TokenLastUsedContextKey{}).(time.Time); ok {
 		lastUsedAt = val
 	}
-	if val, ok := ctx.Value(headers.IDENameContextKey{}).(pbCommon.IDEType); ok {
+	if val, ok := ctx.Value(IDENameContextKey{}).(int32); ok {
 		ide = val
 	}
 	return
