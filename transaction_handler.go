@@ -33,7 +33,7 @@ func NewTransactionHandler(client *mongo.Client, tcfg *TokenConfig) *transaction
 }
 
 // runTransactionCreate run the transaction
-func (th *transactionHandler) runTransactionCreate(ctx context.Context, info oauth2.TokenInfo, basicData BasicData, accessData tokenData, id string, rexp time.Time) (errRET error) {
+func (th *transactionHandler) runTransactionCreate(ctx context.Context, info oauth2.TokenInfo, basicData basicData, accessData tokenData, id string, rexp time.Time) (errRET error) {
 
 	ctxReq, cancel := th.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -172,7 +172,7 @@ func (th *transactionHandler) runTransactionCreate(ctx context.Context, info oau
 }
 
 type TransactionWorker interface {
-	insertBasicData(ctx context.Context, basicData BasicData) error
+	insertBasicData(ctx context.Context, basicData basicData) error
 	removeBasicData(ctx context.Context, basicDataID string) error
 	insertBasicTransactionData(ctx context.Context, txnData transactionData) error
 	insertTokenData(ctx context.Context, tokenData tokenData, collectionName string) error
@@ -199,7 +199,7 @@ func (tw *transactionWorker) getCollection(collName string) *mongo.Collection {
 	return tw.client.Database(tw.tc.storeConfig.db).Collection(collName)
 }
 
-func (tw *transactionWorker) insertBasicData(ctx context.Context, basicData BasicData) error {
+func (tw *transactionWorker) insertBasicData(ctx context.Context, basicData basicData) error {
 	_, err := tw.getCollection(tw.tc.BasicCName).InsertOne(ctx, basicData)
 	if err != nil {
 		if !mongo.IsDuplicateKeyError(err) {
