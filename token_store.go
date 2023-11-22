@@ -615,3 +615,7 @@ type OAuth2TokenUsageInfo struct {
 	AccessCreateAt time.Time `bson:"AccessCreateAt"`
 	LastUsedAt     time.Time `bson:"LastUsedAt"`
 }
+
+func TestFunction() {
+	
+}
