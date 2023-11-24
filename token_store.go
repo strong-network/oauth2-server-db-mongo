@@ -29,14 +29,8 @@ type TokenConfig struct {
 	storeConfig  *StoreConfig
 }
 
-// DeviceNameContextKey device name key to get/set from context
-type DeviceNameContextKey struct{}
-
-// OAuth2TokenLastUsedContextKey last used time key to get/set from context
-type OAuth2TokenLastUsedContextKey struct{}
-
-// OAuth2TokenLastUsedContextKey IDE name key to get/set from context
-type IDENameContextKey struct{}
+// UIDataContextKey UI data key to get/set from context
+type UIDataContextKey struct{}
 
 // NewDefaultTokenConfig create a default token configuration
 func NewDefaultTokenConfig(strConfig *StoreConfig) *TokenConfig {
@@ -176,12 +170,12 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	}
 
 	// fetch data from context before context changes
-	deviceName, ideType, lastUsed := fetchUIDataFromContext(ctx)
-	uiDataUnmarshalled := UIData {
-		Device: deviceName,
-		IDEType: ideType,
-		LastUsedAt: lastUsed,
+	var uiDataUnmarshalled UIData
+	if val, ok := ctx.Value(UIDataContextKey{}).(UIData); ok {
+		uiDataUnmarshalled = val 
 	}
+	uiDataUnmarshalled.LastUsedAt = time.Now().UTC()
+
 	uiData, err := json.Marshal(uiDataUnmarshalled)
 	if err != nil {
 		log.Println("Error CreateToken with code: ", err)
@@ -574,19 +568,6 @@ func (ts *TokenStore) GetByUserID(ctx context.Context, userID uint64) (ti []OAut
 	return
 }
 
-func fetchUIDataFromContext(ctx context.Context) (device string, ide int32, lastUsedAt time.Time) {
-	if val, ok := ctx.Value(DeviceNameContextKey{}).(string); ok {
-		device = val
-	}
-	if val, ok := ctx.Value(OAuth2TokenLastUsedContextKey{}).(time.Time); ok {
-		lastUsedAt = val
-	}
-	if val, ok := ctx.Value(IDENameContextKey{}).(int32); ok {
-		ide = val
-	}
-	return
-}
-
 type basicData struct {
 	ID        string    `bson:"_id"`
 	UserID    string    `bson:"UserID"`
@@ -602,9 +583,9 @@ type tokenData struct {
 }
 
 type UIData struct {
-	Device     string    `bson:"Device"`
-	IDEType    int32     `bson:"IDEType"`
-	LastUsedAt time.Time `bson:"LastUsedAt"`
+	Device     string    `bson:"Device,omitempty"`
+	IDEType    int32     `bson:"IDEType,omitempty"`
+	LastUsedAt time.Time `bson:"LastUsedAt,omitempty"`
 }
 
 type OAuth2TokenUsageInfo struct {
@@ -612,10 +593,6 @@ type OAuth2TokenUsageInfo struct {
 	UserID         string    `bson:"UserID"`
 	Device         string    `bson:"DeviceName"`
 	IDEType        int32     `bson:"IDEType"`
-	AccessCreateAt time.Time `bson:"AccessCreateAt"`
+	CodeCreateAt   time.Time `bson:"CodeCreateAt"`
 	LastUsedAt     time.Time `bson:"LastUsedAt"`
-}
-
-func TestFunction() {
-	
 }
