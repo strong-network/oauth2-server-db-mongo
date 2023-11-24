@@ -593,6 +593,6 @@ type OAuth2TokenUsageInfo struct {
 	UserID         string    `bson:"UserID"`
 	Device         string    `bson:"DeviceName"`
 	IDEType        int32     `bson:"IDEType"`
-	CodeCreateAt   time.Time `bson:"CodeCreateAt"`
+	AccessCreateAt time.Time `bson:"AccessCreateAt"`
 	LastUsedAt     time.Time `bson:"LastUsedAt"`
 }
