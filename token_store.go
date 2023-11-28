@@ -16,6 +16,10 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 )
 
+const (
+	UserAgentKey = "User-Agent-Sn"
+)
+
 // TokenConfig token configuration parameters
 type TokenConfig struct {
 	// store txn collection name(The default is oauth2)
@@ -487,6 +491,7 @@ func (ts *TokenStore) getUserTokens(userID uint64) (ti []OAuth2TokenUsageInfo, e
 	}
 	defer cursor.Close(ctx)
 
+	ti = []OAuth2TokenUsageInfo{}
 	for cursor.Next(ctx) {
 		var bd basicData
 		err = cursor.Decode(&bd)
