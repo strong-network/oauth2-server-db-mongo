@@ -352,11 +352,11 @@ func (ts *TokenStore) RemoveByTokenID(ctx context.Context, tokenID string) (err 
 		ctx = ctxReq
 	}
 
-	ts.RemoveAccessByBasic(ctx, tokenID)
+	ts.RemoveAccessByBasicID(ctx, tokenID)
 	if err != nil {
 		log.Println("Error RemoveByTokenID: ", err)
 	}
-	err = ts.RemoveRefreshByBasic(ctx, tokenID)
+	err = ts.RemoveRefreshByBasicID(ctx, tokenID)
 	if err != nil {
 		log.Println("Error RemoveByTokenID: ", err)
 	}
@@ -390,7 +390,7 @@ func (ts *TokenStore) RemoveMultipleByTokenID(ctx context.Context, tokenIDs []st
 }
 
 // RemoveAccessByBasic deletes an access token by its BasicID value
-func (ts *TokenStore) RemoveAccessByBasic(ctx context.Context, basicID string) (err error) {
+func (ts *TokenStore) RemoveAccessByBasicID(ctx context.Context, basicID string) (err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
@@ -405,7 +405,7 @@ func (ts *TokenStore) RemoveAccessByBasic(ctx context.Context, basicID string) (
 }
 
 // RemoveRefreshByBasic deletes a refresh token by its BasicID value
-func (ts *TokenStore) RemoveRefreshByBasic(ctx context.Context, basicID string) (err error) {
+func (ts *TokenStore) RemoveRefreshByBasicID(ctx context.Context, basicID string) (err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
@@ -555,6 +555,16 @@ func (ts *TokenStore) GetByAccess(ctx context.Context, access string) (ti oauth2
 	}
 	ti, err = ts.getData(basicID)
 	return
+}
+
+// GetBasicIDByAccess use the access token for basicID field value
+func (ts *TokenStore) GetBasicIDByAccess(ctx context.Context, access string) (string, error) {
+	basicID, err := ts.getBasicID(ts.tcfg.AccessCName, access)
+	if err != nil {
+		return "", err
+	}
+
+	return basicID, nil
 }
 
 // GetByRefresh use the refresh token for token information data
