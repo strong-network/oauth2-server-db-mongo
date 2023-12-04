@@ -599,6 +599,7 @@ type tokenData struct {
 
 type UIData struct {
 	Device     string    `bson:"Device,omitempty"`
+	DeviceOS   string    `bson:"DeviceOS,omitempty"`
 	IDEType    int32     `bson:"IDEType,omitempty"`
 	LastUsedAt time.Time `bson:"LastUsedAt,omitempty"`
 }
