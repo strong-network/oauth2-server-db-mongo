@@ -575,35 +575,8 @@ func (ts *TokenStore) GetByAccess(ctx context.Context, access string) (ti oauth2
 	return
 }
 
-// GetBasicIDByAccess use the access token for basicID field value
-func (ts *TokenStore) GetBasicIDByAccess(ctx context.Context, access string) (string, error) {
-	basicID, err := ts.getBasicID(ts.tcfg.AccessCName, access)
-	if err != nil {
-		return "", err
-	}
-
-	return basicID, nil
-}
-
-// GetOriginalBasicIDByAccess returns the original token ID of basic token info based on access token
-func (ts *TokenStore) GetOriginalBasicIDByAccess(ctx context.Context, access string) (originalID string, err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	var bd basicData
-	err = ts.c(ts.tcfg.AccessCName).FindOne(ctx, bson.D{{Key: "_id", Value: access}}).Decode(&bd)
-	if err != nil {
-		return "", err
-	}
-	originalID = bd.OriginalID
-	return
-}
-
-// GetAllIDsByAccess returns both the original token ID and current basic ID of basic token info based on access token
-func (ts *TokenStore) GetAllIDsByAccess(ctx context.Context, access string) (id string, originalID string, err error) {
+// GetIDsByAccess returns both the original token ID and current basic ID of basic token info based on access token
+func (ts *TokenStore) GetIDsByAccess(ctx context.Context, access string) (id string, originalID string, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
