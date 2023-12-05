@@ -585,6 +585,7 @@ func (ts *TokenStore) GetBasicIDByAccess(ctx context.Context, access string) (st
 	return basicID, nil
 }
 
+// GetOriginalBasicIDByAccess returns the original token ID of basic token info based on access token
 func (ts *TokenStore) GetOriginalBasicIDByAccess(ctx context.Context, access string) (originalID string, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -601,6 +602,7 @@ func (ts *TokenStore) GetOriginalBasicIDByAccess(ctx context.Context, access str
 	return
 }
 
+// GetAllIDsByAccess returns both the original token ID and current basic ID of basic token info based on access token
 func (ts *TokenStore) GetAllIDsByAccess(ctx context.Context, access string) (id string, originalID string, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -628,6 +630,7 @@ func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oaut
 	return
 }
 
+// GetOriginalBasicIDByRefresh returns the original token ID of basic token info based on refresh token
 func (ts *TokenStore) GetOriginalBasicIDByRefresh(ctx context.Context, refresh string) (originalID string, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -638,7 +641,7 @@ func (ts *TokenStore) GetOriginalBasicIDByRefresh(ctx context.Context, refresh s
 	var bd basicData
 	err = ts.c(ts.tcfg.RefreshCName).FindOne(ctx, bson.D{{Key: "_id", Value: refresh}}).Decode(&bd)
 	if err != nil {
-		return "", nil
+		return "", err
 	}
 	originalID = bd.OriginalID
 	return
@@ -648,6 +651,35 @@ func (ts *TokenStore) GetOriginalBasicIDByRefresh(ctx context.Context, refresh s
 func (ts *TokenStore) GetByUserID(ctx context.Context, userID uint64) (ti []OAuth2TokenUsageInfo, err error) {
 	ti, err = ts.getUserTokens(userID)
 	return
+}
+
+// UpdateTokenUsage updates the LastUsedTime field to current time
+func (ts *TokenStore) UpdateTokenUsage(ctx context.Context, basicID string) (err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var bd basicData
+	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basicID}}).Decode(&bd)
+	if err != nil {
+		return err
+	}
+
+	var uiData UIData
+	err = bson.Unmarshal(bd.UIData, &uiData)
+	if err != nil {
+		return err
+	}
+
+	uiData.LastUsedAt = time.Now().UTC()
+	bd.UIData, err = bson.Marshal(uiData)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type basicData struct {
