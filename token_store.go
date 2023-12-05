@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	UserAgentKey = "User-Agent-Sn"
+	UserAgentKey  = "User-Agent-Sn"
 )
 
 // TokenConfig token configuration parameters
@@ -35,6 +35,9 @@ type TokenConfig struct {
 
 // UIDataContextKey UI data key to get/set from context
 type UIDataContextKey struct{}
+
+// OriginalIDContextKey Original ID key to get/set from context
+type OriginalIDContextKey struct{}
 
 // NewDefaultTokenConfig create a default token configuration
 func NewDefaultTokenConfig(strConfig *StoreConfig) *TokenConfig {
@@ -166,14 +169,7 @@ func (ts *TokenStore) c(name string) *mongo.Collection {
 	return ts.client.Database(ts.tcfg.storeConfig.db).Collection(name)
 }
 
-// Create create and store the new token information
-func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err error) {
-	jv, err := json.Marshal(info)
-	if err != nil {
-		return
-	}
-
-	// fetch data from context before context changes
+func fetchUIDataFromContext(ctx context.Context) []byte {
 	var uiDataUnmarshalled UIData
 	if val, ok := ctx.Value(UIDataContextKey{}).(UIData); ok {
 		uiDataUnmarshalled = val 
@@ -185,6 +181,26 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 		log.Println("Error CreateToken with code: ", err)
 		uiData = []byte{}
 	}
+	return uiData
+}
+
+func fetchOriginalIDFromContext(ctx context.Context) string {
+	if originalID, ok := ctx.Value(OriginalIDContextKey{}).(string); ok {
+		return originalID
+	}
+	return ""
+}
+
+// Create create and store the new token information
+func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err error) {
+	jv, err := json.Marshal(info)
+	if err != nil {
+		return
+	}
+
+	// fetch data from context before context changes
+	uiData := fetchUIDataFromContext(ctx)
+	originalID := fetchOriginalIDFromContext(ctx)
 
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -195,11 +211,12 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	if code := info.GetCode(); code != "" {
 		// Create the basicData document
 		basicData := basicData{
-			ID:			code,
-			UserID:		info.GetUserID(),
-			Data:		jv,
-			UIData: 	uiData,
-			ExpiredAt:	info.GetCodeCreateAt().Add(info.GetCodeExpiresIn()),
+			ID:			 code,
+			OriginalID:  code,
+			UserID:		 info.GetUserID(),
+			Data:		 jv,
+			UIData: 	 uiData,
+			ExpiredAt:	 info.GetCodeCreateAt().Add(info.GetCodeExpiresIn()),
 		}
 
 		_, err = ts.c(ts.tcfg.BasicCName).InsertOne(ctx, basicData)
@@ -223,11 +240,12 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 
 	// Create the basicData document
 	basicData := basicData{
-		ID:			id,
-		UserID:		info.GetUserID(),
-		Data:		jv,
-		UIData: 	uiData,
-		ExpiredAt:	rexp,
+		ID:			 id,
+		OriginalID:  originalID,
+		UserID:		 info.GetUserID(),
+		Data:		 jv,
+		UIData: 	 uiData,
+		ExpiredAt:	 rexp,
 	}
 
 	// Create the tokenData document for access
@@ -567,6 +585,39 @@ func (ts *TokenStore) GetBasicIDByAccess(ctx context.Context, access string) (st
 	return basicID, nil
 }
 
+func (ts *TokenStore) GetOriginalBasicIDByAccess(ctx context.Context, access string) (originalID string, err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var bd basicData
+	err = ts.c(ts.tcfg.AccessCName).FindOne(ctx, bson.D{{Key: "_id", Value: access}}).Decode(&bd)
+	if err != nil {
+		return "", err
+	}
+	originalID = bd.OriginalID
+	return
+}
+
+func (ts *TokenStore) GetAllIDsByAccess(ctx context.Context, access string) (id string, originalID string, err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var bd basicData
+	err = ts.c(ts.tcfg.AccessCName).FindOne(ctx, bson.D{{Key: "_id", Value: access}}).Decode(&bd)
+	if err != nil {
+		return "", "", err
+	}
+	id = bd.ID
+	originalID = bd.OriginalID
+	return
+}
+
 // GetByRefresh use the refresh token for token information data
 func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oauth2.TokenInfo, err error) {
 	basicID, err := ts.getBasicID(ts.tcfg.RefreshCName, refresh)
@@ -577,6 +628,22 @@ func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oaut
 	return
 }
 
+func (ts *TokenStore) GetOriginalBasicIDByRefresh(ctx context.Context, refresh string) (originalID string, err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var bd basicData
+	err = ts.c(ts.tcfg.RefreshCName).FindOne(ctx, bson.D{{Key: "_id", Value: refresh}}).Decode(&bd)
+	if err != nil {
+		return "", nil
+	}
+	originalID = bd.OriginalID
+	return
+}
+
 // GetByUserID returns all tokens of the specified user from the DB
 func (ts *TokenStore) GetByUserID(ctx context.Context, userID uint64) (ti []OAuth2TokenUsageInfo, err error) {
 	ti, err = ts.getUserTokens(userID)
@@ -584,11 +651,12 @@ func (ts *TokenStore) GetByUserID(ctx context.Context, userID uint64) (ti []OAut
 }
 
 type basicData struct {
-	ID        string    `bson:"_id"`
-	UserID    string    `bson:"UserID"`
-	Data      []byte    `bson:"Data"`
-	UIData    []byte    `bson:"UIData"`
-	ExpiredAt time.Time `bson:"ExpiredAt"`
+	ID         string    `bson:"_id"`
+	OriginalID string	 `bson:"OriginalID,omitempty"`
+	UserID     string    `bson:"UserID"`
+	Data       []byte    `bson:"Data"`
+	UIData     []byte    `bson:"UIData"`
+	ExpiredAt  time.Time `bson:"ExpiredAt"`
 }
 
 type tokenData struct {
