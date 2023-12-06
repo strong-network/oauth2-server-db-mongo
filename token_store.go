@@ -590,7 +590,7 @@ func (ts *TokenStore) GetIDsByAccess(ctx context.Context, access string) (basicI
 	}
 
 	var bd basicData
-	basicID = td.ID
+	basicID = td.BasicID
 	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basicID}}).Decode(&bd)
 	if err != nil {
 		return "", "", err
