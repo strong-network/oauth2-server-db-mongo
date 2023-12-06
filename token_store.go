@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	UserAgentKey  = "User-Agent-Sn"
+	UserAgentKey = "User-Agent-Sn"
 )
 
 // TokenConfig token configuration parameters
@@ -36,8 +36,8 @@ type TokenConfig struct {
 // UIDataContextKey UI data key to get/set from context
 type UIDataContextKey struct{}
 
-// OriginalIDContextKey Original ID key to get/set from context
-type OriginalIDContextKey struct{}
+// PersistentIDContextKey Persistent ID key to get/set from context
+type PersistentIDContextKey struct{}
 
 // NewDefaultTokenConfig create a default token configuration
 func NewDefaultTokenConfig(strConfig *StoreConfig) *TokenConfig {
@@ -172,7 +172,7 @@ func (ts *TokenStore) c(name string) *mongo.Collection {
 func fetchUIDataFromContext(ctx context.Context) []byte {
 	var uiDataUnmarshalled UIData
 	if val, ok := ctx.Value(UIDataContextKey{}).(UIData); ok {
-		uiDataUnmarshalled = val 
+		uiDataUnmarshalled = val
 	}
 	uiDataUnmarshalled.LastUsedAt = time.Now().UTC()
 
@@ -184,9 +184,9 @@ func fetchUIDataFromContext(ctx context.Context) []byte {
 	return uiData
 }
 
-func fetchOriginalIDFromContext(ctx context.Context) string {
-	if originalID, ok := ctx.Value(OriginalIDContextKey{}).(string); ok {
-		return originalID
+func fetchPersistentIDFromContext(ctx context.Context) string {
+	if persistentID, ok := ctx.Value(PersistentIDContextKey{}).(string); ok {
+		return persistentID
 	}
 	return ""
 }
@@ -200,7 +200,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 
 	// fetch data from context before context changes
 	uiData := fetchUIDataFromContext(ctx)
-	originalID := fetchOriginalIDFromContext(ctx)
+	persistentID := fetchPersistentIDFromContext(ctx)
 
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -211,12 +211,12 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	if code := info.GetCode(); code != "" {
 		// Create the basicData document
 		basicData := basicData{
-			ID:			 code,
-			OriginalID:  code,
-			UserID:		 info.GetUserID(),
-			Data:		 jv,
-			UIData: 	 uiData,
-			ExpiredAt:	 info.GetCodeCreateAt().Add(info.GetCodeExpiresIn()),
+			ID:           code,
+			PersistentID: code,
+			UserID:       info.GetUserID(),
+			Data:         jv,
+			UIData:       uiData,
+			ExpiredAt:    info.GetCodeCreateAt().Add(info.GetCodeExpiresIn()),
 		}
 
 		_, err = ts.c(ts.tcfg.BasicCName).InsertOne(ctx, basicData)
@@ -240,12 +240,12 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 
 	// Create the basicData document
 	basicData := basicData{
-		ID:			 id,
-		OriginalID:  originalID,
-		UserID:		 info.GetUserID(),
-		Data:		 jv,
-		UIData: 	 uiData,
-		ExpiredAt:	 rexp,
+		ID:           id,
+		PersistentID: persistentID,
+		UserID:       info.GetUserID(),
+		Data:         jv,
+		UIData:       uiData,
+		ExpiredAt:    rexp,
 	}
 
 	// Create the tokenData document for access
@@ -352,7 +352,7 @@ func (ts *TokenStore) RemoveByUserID(ctx context.Context, userID uint64) (err er
 		if err != nil {
 			log.Println("Error RemoveByUserID: ", err)
 		}
-		
+
 		err = ts.RemoveByTokenID(ctx, bd.ID)
 		if err != nil {
 			log.Println("Error RemoveByUserID: ", err)
@@ -528,7 +528,7 @@ func (ts *TokenStore) getUserTokens(userID uint64) (ti []OAuth2TokenUsageInfo, e
 		// ID field isn't inside models.Token struct, which is marshaled into bd.Data, so it has to be assigned manualy
 		tui.ID = bd.ID
 
-		if (bd.UIData != nil && len(bd.UIData) > 0) {
+		if bd.UIData != nil && len(bd.UIData) > 0 {
 			err = json.Unmarshal(bd.UIData, &tui)
 			if err != nil {
 				log.Println("Error getUserTokens: ", err)
@@ -575,8 +575,8 @@ func (ts *TokenStore) GetByAccess(ctx context.Context, access string) (ti oauth2
 	return
 }
 
-// GetIDsByAccess returns both the original token ID and current basic ID of basic token info based on access token
-func (ts *TokenStore) GetIDsByAccess(ctx context.Context, access string) (id string, originalID string, err error) {
+// GetIDsByAccess returns both the persistent token ID and current basic ID of basic token info based on access token
+func (ts *TokenStore) GetIDsByAccess(ctx context.Context, access string) (id string, persistentID string, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
@@ -589,7 +589,7 @@ func (ts *TokenStore) GetIDsByAccess(ctx context.Context, access string) (id str
 		return "", "", err
 	}
 	id = bd.ID
-	originalID = bd.OriginalID
+	persistentID = bd.PersistentID
 	return
 }
 
@@ -603,8 +603,8 @@ func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oaut
 	return
 }
 
-// GetOriginalBasicIDByRefresh returns the original token ID of basic token info based on refresh token
-func (ts *TokenStore) GetOriginalBasicIDByRefresh(ctx context.Context, refresh string) (originalID string, err error) {
+// GetPersistentBasicIDByRefresh returns the persistent token ID of basic token info based on refresh token
+func (ts *TokenStore) GetPersistentBasicIDByRefresh(ctx context.Context, refresh string) (persistentID string, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
@@ -616,7 +616,7 @@ func (ts *TokenStore) GetOriginalBasicIDByRefresh(ctx context.Context, refresh s
 	if err != nil {
 		return "", err
 	}
-	originalID = bd.OriginalID
+	persistentID = bd.PersistentID
 	return
 }
 
@@ -656,12 +656,12 @@ func (ts *TokenStore) UpdateTokenUsage(ctx context.Context, basicID string) (err
 }
 
 type basicData struct {
-	ID         string    `bson:"_id"`
-	OriginalID string	 `bson:"OriginalID,omitempty"`
-	UserID     string    `bson:"UserID"`
-	Data       []byte    `bson:"Data"`
-	UIData     []byte    `bson:"UIData"`
-	ExpiredAt  time.Time `bson:"ExpiredAt"`
+	ID           string    `bson:"_id"`
+	PersistentID string    `bson:"PersistentID,omitempty"`
+	UserID       string    `bson:"UserID"`
+	Data         []byte    `bson:"Data"`
+	UIData       []byte    `bson:"UIData"`
+	ExpiredAt    time.Time `bson:"ExpiredAt"`
 }
 
 type tokenData struct {
