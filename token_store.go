@@ -576,19 +576,25 @@ func (ts *TokenStore) GetByAccess(ctx context.Context, access string) (ti oauth2
 }
 
 // GetIDsByAccess returns both the persistent token ID and current basic ID of basic token info based on access token
-func (ts *TokenStore) GetIDsByAccess(ctx context.Context, access string) (id string, persistentID string, err error) {
+func (ts *TokenStore) GetIDsByAccess(ctx context.Context, access string) (basicID string, persistentID string, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
 		ctx = ctxReq
 	}
 
-	var bd basicData
-	err = ts.c(ts.tcfg.AccessCName).FindOne(ctx, bson.D{{Key: "_id", Value: access}}).Decode(&bd)
+	var td tokenData
+	err = ts.c(ts.tcfg.AccessCName).FindOne(ctx, bson.D{{Key: "_id", Value: access}}).Decode(&td)
 	if err != nil {
 		return "", "", err
 	}
-	id = bd.ID
+
+	var bd basicData
+	basicID = td.ID
+	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basicID}}).Decode(&bd)
+	if err != nil {
+		return "", "", err
+	}
 	persistentID = bd.PersistentID
 	return
 }
@@ -611,8 +617,15 @@ func (ts *TokenStore) GetPersistentBasicIDByRefresh(ctx context.Context, refresh
 		ctx = ctxReq
 	}
 
+	var td tokenData
+	err = ts.c(ts.tcfg.RefreshCName).FindOne(ctx, bson.D{{Key: "_id", Value: refresh}}).Decode(&td)
+	if err != nil {
+		return "", err
+	}
+
 	var bd basicData
-	err = ts.c(ts.tcfg.RefreshCName).FindOne(ctx, bson.D{{Key: "_id", Value: refresh}}).Decode(&bd)
+	basicID := td.BasicID
+	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basicID}}).Decode(&bd)
 	if err != nil {
 		return "", err
 	}
