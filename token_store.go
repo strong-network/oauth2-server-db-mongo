@@ -353,7 +353,7 @@ func (ts *TokenStore) RemoveByUserID(ctx context.Context, userID uint64) (err er
 			log.Println("Error RemoveByUserID: ", err)
 		}
 
-		err = ts.RemoveByTokenID(ctx, bd.ID)
+		err = ts.RemoveWholeTokenByBasicID(ctx, bd.ID)
 		if err != nil {
 			log.Println("Error RemoveByUserID: ", err)
 		}
@@ -362,8 +362,8 @@ func (ts *TokenStore) RemoveByUserID(ctx context.Context, userID uint64) (err er
 	return nil
 }
 
-// RemoveByTokenID deletes the OAuth token information from the DB for the specified token
-func (ts *TokenStore) RemoveByTokenID(ctx context.Context, tokenID string) (err error) {
+// RemoveWholeTokenByBasicID deletes the OAuth token information from all of the DB collection (access, refresh, basic)
+func (ts *TokenStore) RemoveWholeTokenByBasicID(ctx context.Context, tokenID string) (err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
@@ -372,16 +372,16 @@ func (ts *TokenStore) RemoveByTokenID(ctx context.Context, tokenID string) (err 
 
 	ts.RemoveAccessByBasicID(ctx, tokenID)
 	if err != nil {
-		log.Println("Error RemoveByTokenID: ", err)
+		log.Println("Error RemoveWholeTokenByBasicID: ", err)
 	}
 	err = ts.RemoveRefreshByBasicID(ctx, tokenID)
 	if err != nil {
-		log.Println("Error RemoveByTokenID: ", err)
+		log.Println("Error RemoveWholeTokenByBasicID: ", err)
 	}
 
 	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: tokenID}})
 	if err != nil {
-		log.Println("Error RemoveByTokenID: ", err)
+		log.Println("Error RemoveWholeTokenByBasicID: ", err)
 	}
 	return
 }
