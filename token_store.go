@@ -362,7 +362,7 @@ func (ts *TokenStore) RemoveByUserID(ctx context.Context, userID uint64) (err er
 	return nil
 }
 
-// RemoveWholeTokenByBasicID deletes the OAuth token information from all of the DB collection (access, refresh, basic)
+// RemoveWholeTokenByBasicID deletes the OAuth token information from all the relevant collections (access, refresh, basic)
 func (ts *TokenStore) RemoveWholeTokenByBasicID(ctx context.Context, tokenID string) (err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -370,19 +370,49 @@ func (ts *TokenStore) RemoveWholeTokenByBasicID(ctx context.Context, tokenID str
 		ctx = ctxReq
 	}
 
-	ts.RemoveAccessByBasicID(ctx, tokenID)
+	_, err = ts.c(ts.tcfg.AccessCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: tokenID}})
 	if err != nil {
 		log.Println("Error RemoveWholeTokenByBasicID: ", err)
 	}
-	err = ts.RemoveRefreshByBasicID(ctx, tokenID)
+	_, err = ts.c(ts.tcfg.RefreshCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: tokenID}})
 	if err != nil {
 		log.Println("Error RemoveWholeTokenByBasicID: ", err)
 	}
-
 	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: tokenID}})
 	if err != nil {
 		log.Println("Error RemoveWholeTokenByBasicID: ", err)
 	}
+	return
+}
+
+// RemoveWholeTokenByAccess deletes the OAuth token information from all of the DB collections (access, refresh, basic) based on access token
+func (ts *TokenStore) RemoveWholeTokenByAccess(ctx context.Context, access string) (err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var td tokenData
+	err = ts.c(ts.tcfg.AccessCName).FindOne(ctx, bson.D{{Key: "_id", Value: access}}).Decode(&td)
+	if err != nil {
+		return err
+	}
+
+	basicID := td.BasicID
+	_, err = ts.c(ts.tcfg.AccessCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: basicID}})
+	if err != nil {
+		log.Println("Error RemoveWholeTokenByAccess: ", err)
+	}
+	_, err = ts.c(ts.tcfg.RefreshCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: basicID}})
+	if err != nil {
+		log.Println("Error RemoveWholeTokenByAccess: ", err)
+	}
+	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: basicID}})
+	if err != nil {
+		log.Println("Error RemoveWholeTokenByAccess: ", err)
+	}
+
 	return
 }
 
