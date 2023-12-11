@@ -629,6 +629,52 @@ func (ts *TokenStore) GetIDsByAccess(ctx context.Context, access string) (basicI
 	return
 }
 
+// GetPersistentIDByBasicID returns the persistent token ID based on basic ID
+func (ts *TokenStore) GetPersistentIDByBasicID(ctx context.Context, basic string) (persistentID string, err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var bd basicData
+	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basic}}).Decode(&bd)
+	if err != nil {
+		return "", err
+	}
+	persistentID = bd.PersistentID
+	return
+}
+
+// GetAllPersistentIDsOfUser returns persistent IDs of all of the users tokens
+func (ts *TokenStore) GetAllPersistentIDsOfUser(ctx context.Context, userID uint64) (persistentID []string, err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	userIDString := strconv.FormatUint(userID, 10)
+	cursor, err := ts.c(ts.tcfg.BasicCName).Find(ctx, bson.D{{Key: "UserID", Value: userIDString}})
+	if err != nil {
+		log.Println("Error GetAllPersistentIDsOfUser: ", err)
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var bd basicData
+		err = cursor.Decode(&bd)
+		if err != nil {
+			log.Println("Error GetAllPersistentIDsOfUser: ", err)
+			return
+		}
+
+		persistentID = append(persistentID, bd.PersistentID)
+	}
+	return
+}
+
 // GetByRefresh use the refresh token for token information data
 func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oauth2.TokenInfo, err error) {
 	basicID, err := ts.getBasicID(ts.tcfg.RefreshCName, refresh)
@@ -639,8 +685,8 @@ func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oaut
 	return
 }
 
-// GetPersistentBasicIDByRefresh returns the persistent token ID of basic token info based on refresh token
-func (ts *TokenStore) GetPersistentBasicIDByRefresh(ctx context.Context, refresh string) (persistentID string, err error) {
+// GetPersistentIDByRefresh returns the persistent token ID of basic token info based on refresh token
+func (ts *TokenStore) GetPersistentIDByRefresh(ctx context.Context, refresh string) (persistentID string, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
