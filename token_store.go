@@ -605,6 +605,24 @@ func (ts *TokenStore) GetByAccess(ctx context.Context, access string) (ti oauth2
 	return
 }
 
+// GetAccessByBasicID use the access token for token information data
+func (ts *TokenStore) GetAccessByBasicID(ctx context.Context, basic string) (access string, err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var td tokenData
+	err = ts.c(ts.tcfg.AccessCName).FindOne(ctx, bson.D{{Key: "BasicID", Value: basic}}).Decode(&td)
+	if err != nil {
+		return "", err
+	}
+	access = td.ID
+
+	return
+}
+
 // GetIDsByAccess returns both the persistent token ID and current basic ID of basic token info based on access token
 func (ts *TokenStore) GetIDsByAccess(ctx context.Context, access string) (basicID string, persistentID string, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
@@ -682,6 +700,24 @@ func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oaut
 		return
 	}
 	ti, err = ts.getData(basicID)
+	return
+}
+
+// GetRefreshByBasicID use the access token for token information data
+func (ts *TokenStore) GetRefreshByBasicID(ctx context.Context, basic string) (refresh string, err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var td tokenData
+	err = ts.c(ts.tcfg.RefreshCName).FindOne(ctx, bson.D{{Key: "BasicID", Value: basic}}).Decode(&td)
+	if err != nil {
+		return "", err
+	}
+	refresh = td.ID
+
 	return
 }
 
