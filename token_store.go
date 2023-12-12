@@ -745,6 +745,30 @@ func (ts *TokenStore) GetPersistentIDByRefresh(ctx context.Context, refresh stri
 	return
 }
 
+// GetUserIDByRefresh returns the ID of the token owner based on refresh token
+func (ts *TokenStore) GetUserIDByRefresh(ctx context.Context, refresh string) (userID string, err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var td tokenData
+	err = ts.c(ts.tcfg.RefreshCName).FindOne(ctx, bson.D{{Key: "_id", Value: refresh}}).Decode(&td)
+	if err != nil {
+		return "", err
+	}
+
+	var bd basicData
+	basicID := td.BasicID
+	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basicID}}).Decode(&bd)
+	if err != nil {
+		return "", err
+	}
+	userID = bd.UserID
+	return
+}
+
 // GetByUserID returns all tokens of the specified user from the DB
 func (ts *TokenStore) GetByUserID(ctx context.Context, userID uint64) (ti []OAuth2TokenUsageInfo, err error) {
 	ti, err = ts.getUserTokens(userID)
@@ -805,8 +829,9 @@ type UIData struct {
 type OAuth2TokenUsageInfo struct {
 	ID             string    `bson:"ID"`
 	UserID         string    `bson:"UserID"`
-	Device         string    `bson:"DeviceName"`
-	IDEType        int32     `bson:"IDEType"`
-	AccessCreateAt time.Time `bson:"AccessCreateAt"`
+	ClientID       string    `bson:"ClientID"`
+	DeviceName     string    `bson:"DeviceName"`
+	DeviceOS       string    `bson:"DeviceOS"`
+	CreatedAt      time.Time `bson:"CreatedAt"`
 	LastUsedAt     time.Time `bson:"LastUsedAt"`
 }
