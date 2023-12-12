@@ -829,9 +829,8 @@ type UIData struct {
 type OAuth2TokenUsageInfo struct {
 	ID             string    `bson:"ID"`
 	UserID         string    `bson:"UserID"`
-	ClientID       string    `bson:"ClientID"`
-	DeviceName     string    `bson:"DeviceName"`
-	DeviceOS       string    `bson:"DeviceOS"`
-	CreatedAt      time.Time `bson:"CreatedAt"`
+	Device         string    `bson:"DeviceName"`
+	IDEType        int32     `bson:"IDEType"`
+	AccessCreateAt time.Time `bson:"AccessCreateAt"`
 	LastUsedAt     time.Time `bson:"LastUsedAt"`
 }
