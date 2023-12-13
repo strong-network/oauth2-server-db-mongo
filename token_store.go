@@ -330,6 +330,21 @@ func (ts *TokenStore) RemoveByCode(ctx context.Context, code string) (err error)
 	return
 }
 
+// RemoveBasicByID use the entry ID to delete the token information
+func (ts *TokenStore) RemoveBasicByID(ctx context.Context, id string) (err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: id}})
+	if err != nil {
+		log.Println("Error RemoveBasicByID: ", err)
+	}
+	return
+}
+
 // RemoveByUserID deletes OAuth token information from the DB of all OAuth tokens of the specified user
 func (ts *TokenStore) RemoveByUserID(ctx context.Context, userID uint64) (err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
@@ -602,6 +617,23 @@ func (ts *TokenStore) GetByAccess(ctx context.Context, access string) (ti oauth2
 		return
 	}
 	ti, err = ts.getData(basicID)
+	return
+}
+
+func (ts *TokenStore) GetBasicIDByRefresh(ctx context.Context, refresh string) (basicID string, err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var td tokenData
+	err = ts.c(ts.tcfg.RefreshCName).FindOne(ctx, bson.D{{Key: "_id", Value: refresh}}).Decode(&td)
+	if err != nil {
+		return "", err
+	}
+
+	basicID = td.BasicID
 	return
 }
 
