@@ -646,6 +646,7 @@ func (ts *TokenStore) GetEntryIDOfToken(ctx context.Context, tokenID string) (en
 }
 
 func (ts *TokenStore) convertBasicDataToTokenUsage(bd basicData) (tu OAuth2TokenUsageInfo, err error) {
+	tu.ID = bd.TokenID
 	err = json.Unmarshal(bd.Data, &tu)
 	if err != nil {
 		return
