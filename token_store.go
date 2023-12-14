@@ -250,7 +250,8 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	// Create the tokenData document for access
 	accessData := tokenData{
 		ID:        info.GetAccess(),
-		TokenID:   id,
+		BasicID:   id,
+		TokenID:   tokenID,
 		ExpiredAt: aexp,
 	}
 
@@ -284,7 +285,8 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 			if refresh != "" {
 				refreshData := tokenData{
 					ID:        refresh,
-					TokenID:   id,
+					BasicID:   id,
+					TokenID:   tokenID,
 					ExpiredAt: rexp,
 				}
 				if _, err := refreshColl.InsertOne(sessCtx, refreshData); err != nil {
