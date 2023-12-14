@@ -310,7 +310,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 
 	} else {
 		// MongoDB is deployed as a single instance
-		return ts.txnHandler.runTransactionCreate(ctx, info, basicData, accessData, id, rexp)
+		return ts.txnHandler.runTransactionCreate(ctx, info, basicData, accessData, id, tokenID, rexp)
 
 	}
 	return

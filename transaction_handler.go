@@ -33,7 +33,7 @@ func NewTransactionHandler(client *mongo.Client, tcfg *TokenConfig) *transaction
 }
 
 // runTransactionCreate run the transaction
-func (th *transactionHandler) runTransactionCreate(ctx context.Context, info oauth2.TokenInfo, basicData basicData, accessData tokenData, id string, rexp time.Time) (errRET error) {
+func (th *transactionHandler) runTransactionCreate(ctx context.Context, info oauth2.TokenInfo, basicData basicData, accessData tokenData, id, tokenID string, rexp time.Time) (errRET error) {
 
 	ctxReq, cancel := th.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -124,6 +124,7 @@ func (th *transactionHandler) runTransactionCreate(ctx context.Context, info oau
 		refreshData := tokenData{
 			ID:        refresh,
 			BasicID:   id,
+			TokenID:   tokenID,
 			ExpiredAt: rexp,
 		}
 		errRET = th.tw.insertTokenData(ctx, refreshData, th.tcfg.RefreshCName)
