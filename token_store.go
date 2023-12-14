@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"log"
-	"strconv"
 	"time"
 
 	"github.com/go-oauth2/oauth2/v4"
@@ -124,7 +123,7 @@ func NewTokenStoreWithSession(client *mongo.Client, cfg *Config, scfgs ...*Store
 	}
 
 	_, err := ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.BasicCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
-		Keys:    bson.D{{"ExpiredAt", 1}},
+		Keys:    bson.D{{"expired_at", 1}},
 		Options: options.Index().SetExpireAfterSeconds(1),
 	})
 	if err != nil {
@@ -132,7 +131,7 @@ func NewTokenStoreWithSession(client *mongo.Client, cfg *Config, scfgs ...*Store
 	}
 
 	_, err = ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.AccessCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
-		Keys:    bson.D{{"ExpiredAt", 1}},
+		Keys:    bson.D{{"expired_at", 1}},
 		Options: options.Index().SetExpireAfterSeconds(1),
 	})
 	if err != nil {
@@ -140,7 +139,7 @@ func NewTokenStoreWithSession(client *mongo.Client, cfg *Config, scfgs ...*Store
 	}
 
 	_, err = ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.RefreshCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
-		Keys:    bson.D{{"ExpiredAt", 1}},
+		Keys:    bson.D{{"expired_at", 1}},
 		Options: options.Index().SetExpireAfterSeconds(1),
 	})
 	if err != nil {
@@ -200,7 +199,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 
 	// fetch data from context before context changes
 	uiData := fetchUIDataFromContext(ctx)
-	persistentID := fetchPersistentIDFromContext(ctx)
+	tokenID := fetchPersistentIDFromContext(ctx)
 
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -211,12 +210,12 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	if code := info.GetCode(); code != "" {
 		// Create the basicData document
 		basicData := basicData{
-			ID:           code,
-			PersistentID: code,
-			UserID:       info.GetUserID(),
-			Data:         jv,
-			UIData:       uiData,
-			ExpiredAt:    info.GetCodeCreateAt().Add(info.GetCodeExpiresIn()),
+			ID:        code,
+			TokenID:   code,
+			UserID:    info.GetUserID(),
+			Data:      jv,
+			UIData:    uiData,
+			ExpiredAt: info.GetCodeCreateAt().Add(info.GetCodeExpiresIn()),
 		}
 
 		_, err = ts.c(ts.tcfg.BasicCName).InsertOne(ctx, basicData)
@@ -240,18 +239,18 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 
 	// Create the basicData document
 	basicData := basicData{
-		ID:           id,
-		PersistentID: persistentID,
-		UserID:       info.GetUserID(),
-		Data:         jv,
-		UIData:       uiData,
-		ExpiredAt:    rexp,
+		ID:        id,
+		TokenID:   tokenID,
+		UserID:    info.GetUserID(),
+		Data:      jv,
+		UIData:    uiData,
+		ExpiredAt: rexp,
 	}
 
 	// Create the tokenData document for access
 	accessData := tokenData{
 		ID:        info.GetAccess(),
-		BasicID:   id,
+		TokenID:   id,
 		ExpiredAt: aexp,
 	}
 
@@ -285,7 +284,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 			if refresh != "" {
 				refreshData := tokenData{
 					ID:        refresh,
-					BasicID:   id,
+					TokenID:   id,
 					ExpiredAt: rexp,
 				}
 				if _, err := refreshColl.InsertOne(sessCtx, refreshData); err != nil {
@@ -315,6 +314,23 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	return
 }
 
+func (ts *TokenStore) removeTokenByTokenID(ctx context.Context, tokenID string) (err error) {
+	_, err = ts.c(ts.tcfg.AccessCName).DeleteOne(ctx, bson.D{{Key: "token_id", Value: tokenID}})
+	if err != nil {
+		log.Println("Error removeTokenByTokenID: ", err)
+	}
+	_, err = ts.c(ts.tcfg.RefreshCName).DeleteOne(ctx, bson.D{{Key: "token_id", Value: tokenID}})
+	if err != nil {
+		log.Println("Error removeTokenByTokenID: ", err)
+	}
+	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "token_id", Value: tokenID}})
+	if err != nil {
+		log.Println("Error removeTokenByTokenID: ", err)
+	}
+
+	return
+}
+
 // RemoveByCode use the authorization code to delete the token information
 func (ts *TokenStore) RemoveByCode(ctx context.Context, code string) (err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
@@ -326,158 +342,6 @@ func (ts *TokenStore) RemoveByCode(ctx context.Context, code string) (err error)
 	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: code}})
 	if err != nil {
 		log.Println("Error RemoveByCode: ", err)
-	}
-	return
-}
-
-// RemoveBasicByID use the entry ID to delete the token information
-func (ts *TokenStore) RemoveBasicByID(ctx context.Context, id string) (err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: id}})
-	if err != nil {
-		log.Println("Error RemoveBasicByID: ", err)
-	}
-	return
-}
-
-// RemoveByUserID deletes OAuth token information from the DB of all OAuth tokens of the specified user
-func (ts *TokenStore) RemoveByUserID(ctx context.Context, userID uint64) (err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	userIDString := strconv.FormatUint(userID, 10)
-	cursor, err := ts.c(ts.tcfg.BasicCName).Find(ctx, bson.D{{Key: "UserID", Value: userIDString}})
-	if err != nil {
-		log.Println("Error RemoveByUserID: ", err)
-		return err
-	}
-	defer cursor.Close(ctx)
-
-	for cursor.Next(ctx) {
-		var bd basicData
-		err = cursor.Decode(&bd)
-		if err != nil {
-			log.Println("Error RemoveByUserID: ", err)
-		}
-
-		err = ts.RemoveWholeTokenByBasicID(ctx, bd.ID)
-		if err != nil {
-			log.Println("Error RemoveByUserID: ", err)
-		}
-	}
-
-	return nil
-}
-
-// RemoveWholeTokenByBasicID deletes the OAuth token information from all the relevant collections (access, refresh, basic)
-func (ts *TokenStore) RemoveWholeTokenByBasicID(ctx context.Context, tokenID string) (err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	_, err = ts.c(ts.tcfg.AccessCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: tokenID}})
-	if err != nil {
-		log.Println("Error RemoveWholeTokenByBasicID: ", err)
-	}
-	_, err = ts.c(ts.tcfg.RefreshCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: tokenID}})
-	if err != nil {
-		log.Println("Error RemoveWholeTokenByBasicID: ", err)
-	}
-	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: tokenID}})
-	if err != nil {
-		log.Println("Error RemoveWholeTokenByBasicID: ", err)
-	}
-	return
-}
-
-// RemoveWholeTokenByAccess deletes the OAuth token information from all of the DB collections (access, refresh, basic) based on access token
-func (ts *TokenStore) RemoveWholeTokenByAccess(ctx context.Context, access string) (err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	var td tokenData
-	err = ts.c(ts.tcfg.AccessCName).FindOne(ctx, bson.D{{Key: "_id", Value: access}}).Decode(&td)
-	if err != nil {
-		return err
-	}
-
-	basicID := td.BasicID
-	_, err = ts.c(ts.tcfg.AccessCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: basicID}})
-	if err != nil {
-		log.Println("Error RemoveWholeTokenByAccess: ", err)
-	}
-	_, err = ts.c(ts.tcfg.RefreshCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: basicID}})
-	if err != nil {
-		log.Println("Error RemoveWholeTokenByAccess: ", err)
-	}
-	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: basicID}})
-	if err != nil {
-		log.Println("Error RemoveWholeTokenByAccess: ", err)
-	}
-
-	return
-}
-
-// RemoveMultipleByTokenID deletes the OAuth token information from the DB for the specified tokens
-// TODO: This function should also remove entries from Access and Refresh collections
-func (ts *TokenStore) RemoveMultipleByTokenID(ctx context.Context, tokenIDs []string) (err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	var elements bson.A
-	for _, id := range tokenIDs {
-		elements = append(elements, bson.E{Key: "_id", Value: id})
-	}
-	filter := bson.D{{Key: "_id", Value: bson.D{{Key: "$in", Value: elements}}}}
-	_, err = ts.c(ts.tcfg.BasicCName).DeleteMany(ctx, filter)
-	if err != nil {
-		log.Println("Error RemoveMultipleByTokenID: ", err)
-	}
-	return
-}
-
-// RemoveAccessByBasic deletes an access token by its BasicID value
-func (ts *TokenStore) RemoveAccessByBasicID(ctx context.Context, basicID string) (err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	_, err = ts.c(ts.tcfg.AccessCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: basicID}})
-	if err != nil {
-		log.Println("Error RemoveAccessByBasic: ", err)
-	}
-	return
-}
-
-// RemoveRefreshByBasic deletes a refresh token by its BasicID value
-func (ts *TokenStore) RemoveRefreshByBasicID(ctx context.Context, basicID string) (err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	_, err = ts.c(ts.tcfg.RefreshCName).DeleteOne(ctx, bson.D{{Key: "BasicID", Value: basicID}})
-	if err != nil {
-		log.Println("Error RemoveRefreshByBasic: ", err)
 	}
 	return
 }
@@ -512,7 +376,114 @@ func (ts *TokenStore) RemoveByRefresh(ctx context.Context, refresh string) (err 
 	return
 }
 
-func (ts *TokenStore) getData(basicID string) (ti oauth2.TokenInfo, err error) {
+// RemoveTokenByTokenID use the token ID to delete the whole token
+func (ts *TokenStore) RemoveTokenByTokenID(ctx context.Context, tokenID string) (err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	err = ts.removeTokenByTokenID(ctx, tokenID)
+	return
+}
+
+// RemoveTokenByAccess use the access token to delete the whole token
+func (ts *TokenStore) RemoveTokenByAccess(ctx context.Context, access string) (err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var td tokenData
+	err = ts.c(ts.tcfg.AccessCName).FindOne(ctx, bson.D{{Key: "_id", Value: access}}).Decode(&td)
+	if err != nil {
+		return
+	}
+
+	err = ts.removeTokenByTokenID(ctx, td.TokenID)
+	return
+}
+
+// RemoveTokenByRefresh use the refresh token to delete the whole token
+func (ts *TokenStore) RemoveTokenByRefresh(ctx context.Context, refresh string) (err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var td tokenData
+	err = ts.c(ts.tcfg.RefreshCName).FindOne(ctx, bson.D{{Key: "_id", Value: refresh}}).Decode(&td)
+	if err != nil {
+		return
+	}
+
+	err = ts.removeTokenByTokenID(ctx, td.TokenID)
+	return
+}
+
+// RemoveTokensByUserID removes all tokens of the specified user
+func (ts *TokenStore) RemoveTokensByUserID(ctx context.Context, userID string) (err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	cursor, err := ts.c(ts.tcfg.BasicCName).Find(ctx, bson.D{{Key: "user_id", Value: userID}})
+	if err != nil {
+		log.Println("Error RemoveTokensByUserID: ", err)
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var bd basicData
+		err = cursor.Decode(&bd)
+		if err != nil {
+			log.Println("Error RemoveTokensByUserID: ", err)
+			continue
+		}
+
+		err = ts.removeTokenByTokenID(ctx, bd.TokenID)
+		if err != nil {
+			log.Println("Error RemoveTokensByUserID: ", err)
+		}
+	}
+	return
+}
+
+func (ts *TokenStore) getTokensByUserID(ctx context.Context, userID string) (tokens []OAuth2TokenUsageInfo, err error) {
+	cursor, err := ts.c(ts.tcfg.BasicCName).Find(ctx, bson.D{{Key: "user_id", Value: userID}})
+	if err != nil {
+		log.Println("Error getTokensByUserID: ", err)
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	tokens = []OAuth2TokenUsageInfo{}
+	for cursor.Next(ctx) {
+		var bd basicData
+		err = cursor.Decode(&bd)
+		if err != nil {
+			log.Println("Error getTokensByUserID: ", err)
+			continue
+		}
+
+		tui, err := ts.convertBasicDataToTokenUsage(bd)
+		if err != nil {
+			log.Println("Error getTokensByUserID: ", err)
+			continue
+		}
+
+		tokens = append(tokens, tui)
+	}
+	return
+}
+
+func (ts *TokenStore) getData(tokenID string) (ti oauth2.TokenInfo, err error) {
 	ctx := context.Background()
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -521,7 +492,7 @@ func (ts *TokenStore) getData(basicID string) (ti oauth2.TokenInfo, err error) {
 	}
 
 	var bd basicData
-	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basicID}}).Decode(&bd)
+	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "token_id", Value: tokenID}}).Decode(&bd)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
@@ -538,53 +509,7 @@ func (ts *TokenStore) getData(basicID string) (ti oauth2.TokenInfo, err error) {
 	return
 }
 
-func (ts *TokenStore) getUserTokens(userID uint64) (ti []OAuth2TokenUsageInfo, err error) {
-	ctx := context.Background()
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	userIDString := strconv.FormatUint(userID, 10)
-	cursor, err := ts.c(ts.tcfg.BasicCName).Find(ctx, bson.D{{Key: "UserID", Value: userIDString}})
-	if err != nil {
-		log.Println("Error getUserTokens: ", err)
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	ti = []OAuth2TokenUsageInfo{}
-	for cursor.Next(ctx) {
-		var bd basicData
-		err = cursor.Decode(&bd)
-		if err != nil {
-			log.Println("Error getUserTokens: ", err)
-			return
-		}
-
-		var tui OAuth2TokenUsageInfo
-		err = json.Unmarshal(bd.Data, &tui)
-		if err != nil {
-			log.Println("Error getUserTokens: ", err)
-			return
-		}
-
-		// ID field isn't inside models.Token struct, which is marshaled into bd.Data, so it has to be assigned manualy
-		tui.ID = bd.ID
-
-		if bd.UIData != nil && len(bd.UIData) > 0 {
-			err = json.Unmarshal(bd.UIData, &tui)
-			if err != nil {
-				log.Println("Error getUserTokens: ", err)
-			}
-		}
-		ti = append(ti, tui)
-	}
-	return
-}
-
-func (ts *TokenStore) getBasicID(cname, token string) (basicID string, err error) {
+func (ts *TokenStore) getTokenID(cname, token string) (tokenID string, err error) {
 	ctx := context.Background()
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -600,7 +525,18 @@ func (ts *TokenStore) getBasicID(cname, token string) (basicID string, err error
 		}
 		return
 	}
-	basicID = td.BasicID
+	tokenID = td.TokenID
+	return
+}
+
+func (ts *TokenStore) getTokenByTokenID(ctx context.Context, tokenID string) (token OAuth2TokenUsageInfo, err error) {
+	var bd basicData
+	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "token_id", Value: tokenID}}).Decode(&bd)
+	if err != nil {
+		return OAuth2TokenUsageInfo{}, err
+	}
+
+	token, err = ts.convertBasicDataToTokenUsage(bd)
 	return
 }
 
@@ -612,51 +548,38 @@ func (ts *TokenStore) GetByCode(ctx context.Context, code string) (ti oauth2.Tok
 
 // GetByAccess use the access token for token information data
 func (ts *TokenStore) GetByAccess(ctx context.Context, access string) (ti oauth2.TokenInfo, err error) {
-	basicID, err := ts.getBasicID(ts.tcfg.AccessCName, access)
-	if err != nil && basicID == "" {
+	tokenID, err := ts.getTokenID(ts.tcfg.AccessCName, access)
+	if err != nil && tokenID == "" {
 		return
 	}
-	ti, err = ts.getData(basicID)
+	ti, err = ts.getData(tokenID)
 	return
 }
 
-func (ts *TokenStore) GetBasicIDByRefresh(ctx context.Context, refresh string) (basicID string, err error) {
+// GetByRefresh use the refresh token for token information data
+func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oauth2.TokenInfo, err error) {
+	tokenID, err := ts.getTokenID(ts.tcfg.RefreshCName, refresh)
+	if err != nil && tokenID == "" {
+		return
+	}
+	ti, err = ts.getData(tokenID)
+	return
+}
+
+// GetTokensByUserID use the token ID to return token Information
+func (ts *TokenStore) GetTokenByTokenID(ctx context.Context, tokenID string) (token OAuth2TokenUsageInfo, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
 		ctx = ctxReq
 	}
 
-	var td tokenData
-	err = ts.c(ts.tcfg.RefreshCName).FindOne(ctx, bson.D{{Key: "_id", Value: refresh}}).Decode(&td)
-	if err != nil {
-		return "", err
-	}
-
-	basicID = td.BasicID
+	token, err = ts.getTokenByTokenID(ctx, tokenID)
 	return
 }
 
-// GetAccessByBasicID use the access token for token information data
-func (ts *TokenStore) GetAccessByBasicID(ctx context.Context, basic string) (access string, err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	var td tokenData
-	err = ts.c(ts.tcfg.AccessCName).FindOne(ctx, bson.D{{Key: "BasicID", Value: basic}}).Decode(&td)
-	if err != nil {
-		return "", err
-	}
-	access = td.ID
-
-	return
-}
-
-// GetIDsByAccess returns both the persistent token ID and current basic ID of basic token info based on access token
-func (ts *TokenStore) GetIDsByAccess(ctx context.Context, access string) (basicID string, persistentID string, err error) {
+// GetTokenByAccess use the access token to return token Information
+func (ts *TokenStore) GetTokenByAccess(ctx context.Context, access string) (token OAuth2TokenUsageInfo, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
@@ -666,95 +589,15 @@ func (ts *TokenStore) GetIDsByAccess(ctx context.Context, access string) (basicI
 	var td tokenData
 	err = ts.c(ts.tcfg.AccessCName).FindOne(ctx, bson.D{{Key: "_id", Value: access}}).Decode(&td)
 	if err != nil {
-		return "", "", err
-	}
-
-	var bd basicData
-	basicID = td.BasicID
-	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basicID}}).Decode(&bd)
-	if err != nil {
-		return "", "", err
-	}
-	persistentID = bd.PersistentID
-	return
-}
-
-// GetPersistentIDByBasicID returns the persistent token ID based on basic ID
-func (ts *TokenStore) GetPersistentIDByBasicID(ctx context.Context, basic string) (persistentID string, err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	var bd basicData
-	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basic}}).Decode(&bd)
-	if err != nil {
-		return "", err
-	}
-	persistentID = bd.PersistentID
-	return
-}
-
-// GetAllPersistentIDsOfUser returns persistent IDs of all of the users tokens
-func (ts *TokenStore) GetAllPersistentIDsOfUser(ctx context.Context, userID uint64) (persistentID []string, err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	userIDString := strconv.FormatUint(userID, 10)
-	cursor, err := ts.c(ts.tcfg.BasicCName).Find(ctx, bson.D{{Key: "UserID", Value: userIDString}})
-	if err != nil {
-		log.Println("Error GetAllPersistentIDsOfUser: ", err)
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	for cursor.Next(ctx) {
-		var bd basicData
-		err = cursor.Decode(&bd)
-		if err != nil {
-			log.Println("Error GetAllPersistentIDsOfUser: ", err)
-			return
-		}
-
-		persistentID = append(persistentID, bd.PersistentID)
-	}
-	return
-}
-
-// GetByRefresh use the refresh token for token information data
-func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oauth2.TokenInfo, err error) {
-	basicID, err := ts.getBasicID(ts.tcfg.RefreshCName, refresh)
-	if err != nil && basicID == "" {
 		return
 	}
-	ti, err = ts.getData(basicID)
+
+	token, err = ts.getTokenByTokenID(ctx, td.TokenID)
 	return
 }
 
-// GetRefreshByBasicID use the access token for token information data
-func (ts *TokenStore) GetRefreshByBasicID(ctx context.Context, basic string) (refresh string, err error) {
-	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	var td tokenData
-	err = ts.c(ts.tcfg.RefreshCName).FindOne(ctx, bson.D{{Key: "BasicID", Value: basic}}).Decode(&td)
-	if err != nil {
-		return "", err
-	}
-	refresh = td.ID
-
-	return
-}
-
-// GetPersistentIDByRefresh returns the persistent token ID of basic token info based on refresh token
-func (ts *TokenStore) GetPersistentIDByRefresh(ctx context.Context, refresh string) (persistentID string, err error) {
+// GetTokenByRefresh use the refresh token return token Information
+func (ts *TokenStore) GetTokenByRefresh(ctx context.Context, refresh string) (token OAuth2TokenUsageInfo, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
@@ -764,51 +607,26 @@ func (ts *TokenStore) GetPersistentIDByRefresh(ctx context.Context, refresh stri
 	var td tokenData
 	err = ts.c(ts.tcfg.RefreshCName).FindOne(ctx, bson.D{{Key: "_id", Value: refresh}}).Decode(&td)
 	if err != nil {
-		return "", err
+		return
 	}
 
-	var bd basicData
-	basicID := td.BasicID
-	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basicID}}).Decode(&bd)
-	if err != nil {
-		return "", err
-	}
-	persistentID = bd.PersistentID
+	token, err = ts.getTokenByTokenID(ctx, td.TokenID)
 	return
 }
 
-// GetUserIDByRefresh returns the ID of the token owner based on refresh token
-func (ts *TokenStore) GetUserIDByRefresh(ctx context.Context, refresh string) (userID string, err error) {
+// GetTokensByUserID returns all tokens of the specified user
+func (ts *TokenStore) GetTokensByUserID(ctx context.Context, userID string) (tokens []OAuth2TokenUsageInfo, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
 		ctx = ctxReq
 	}
 
-	var td tokenData
-	err = ts.c(ts.tcfg.RefreshCName).FindOne(ctx, bson.D{{Key: "_id", Value: refresh}}).Decode(&td)
-	if err != nil {
-		return "", err
-	}
-
-	var bd basicData
-	basicID := td.BasicID
-	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basicID}}).Decode(&bd)
-	if err != nil {
-		return "", err
-	}
-	userID = bd.UserID
+	tokens, err = ts.getTokensByUserID(ctx, userID)
 	return
 }
 
-// GetByUserID returns all tokens of the specified user from the DB
-func (ts *TokenStore) GetByUserID(ctx context.Context, userID uint64) (ti []OAuth2TokenUsageInfo, err error) {
-	ti, err = ts.getUserTokens(userID)
-	return
-}
-
-// UpdateTokenUsage updates the LastUsedTime field to current time
-func (ts *TokenStore) UpdateTokenUsage(ctx context.Context, basicID string) (err error) {
+func (ts *TokenStore) GetEntryIDOfToken(ctx context.Context, tokenID string) (entryID string, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
@@ -816,53 +634,60 @@ func (ts *TokenStore) UpdateTokenUsage(ctx context.Context, basicID string) (err
 	}
 
 	var bd basicData
-	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basicID}}).Decode(&bd)
+	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "token_id", Value: tokenID}}).Decode(&bd)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	var uiData UIData
-	err = bson.Unmarshal(bd.UIData, &uiData)
+	return bd.ID, nil
+}
+
+func (ts *TokenStore) convertBasicDataToTokenUsage(bd basicData) (tu OAuth2TokenUsageInfo, err error) {
+	err = json.Unmarshal(bd.Data, &tu)
 	if err != nil {
-		return err
+		return
 	}
 
-	uiData.LastUsedAt = time.Now().UTC()
-	bd.UIData, err = bson.Marshal(uiData)
-	if err != nil {
-		return err
+	if bd.UIData != nil && len(bd.UIData) > 0 {
+		err = json.Unmarshal(bd.UIData, &tu)
+		if err != nil {
+			return
+		}
 	}
 
-	return nil
+	return
 }
 
 type basicData struct {
-	ID           string    `bson:"_id"`
-	PersistentID string    `bson:"PersistentID,omitempty"`
-	UserID       string    `bson:"UserID"`
-	Data         []byte    `bson:"Data"`
-	UIData       []byte    `bson:"UIData"`
-	ExpiredAt    time.Time `bson:"ExpiredAt"`
+	ID        string    `bson:"_id"`
+	TokenID   string    `bson:"token_id"`
+	UserID    string    `bson:"user_id"`
+	Data      []byte    `bson:"data"`
+	UIData    []byte    `bson:"ui_data"`
+	ExpiredAt time.Time `bson:"expired_at"`
 }
 
 type tokenData struct {
 	ID        string    `bson:"_id"`
-	BasicID   string    `bson:"BasicID"`
-	ExpiredAt time.Time `bson:"ExpiredAt"`
+	TokenID   string    `bson:"token_id"`
+	ExpiredAt time.Time `bson:"expired_at"`
 }
 
 type UIData struct {
-	Device     string    `bson:"Device,omitempty"`
-	DeviceOS   string    `bson:"DeviceOS,omitempty"`
-	IDEType    int32     `bson:"IDEType,omitempty"`
-	LastUsedAt time.Time `bson:"LastUsedAt,omitempty"`
+	Device     string    `bson:"device_name,omitempty"`
+	DeviceOS   string    `bson:"device_os,omitempty"`
+	IDEType    int32     `bson:"ide_type,omitempty"`
+	CreatedAt  time.Time `bson:"created_at,omitempty"`
+	LastUsedAt time.Time `bson:"last_used_at,omitempty"`
 }
 
 type OAuth2TokenUsageInfo struct {
-	ID             string    `bson:"ID"`
-	UserID         string    `bson:"UserID"`
-	Device         string    `bson:"DeviceName"`
-	IDEType        int32     `bson:"IDEType"`
-	AccessCreateAt time.Time `bson:"AccessCreateAt"`
-	LastUsedAt     time.Time `bson:"LastUsedAt"`
+	ID             string    `bson:"token_id"`
+	UserID         string    `bson:"user_id"`
+	ClientID       string    `bson:"ClientID,omitempty"`
+	IDEType        int32     `bson:"ide_type,omitempty"`
+	Device         string    `bson:"device_name,omitempty"`
+	DeviceOS       string    `bson:"device_os,omitempty"`
+	AccessCreateAt time.Time `bson:"AccessCreateAt,omitempty"`
+	LastUsedAt     time.Time `bson:"last_used_at,omitempty"`
 }
