@@ -483,7 +483,7 @@ func (ts *TokenStore) getTokensByUserID(ctx context.Context, userID string) (tok
 	return
 }
 
-func (ts *TokenStore) getData(tokenID string) (ti oauth2.TokenInfo, err error) {
+func (ts *TokenStore) getData(basicID string) (ti oauth2.TokenInfo, err error) {
 	ctx := context.Background()
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -492,7 +492,7 @@ func (ts *TokenStore) getData(tokenID string) (ti oauth2.TokenInfo, err error) {
 	}
 
 	var bd basicData
-	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "token_id", Value: tokenID}}).Decode(&bd)
+	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basicID}}).Decode(&bd)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
@@ -509,7 +509,7 @@ func (ts *TokenStore) getData(tokenID string) (ti oauth2.TokenInfo, err error) {
 	return
 }
 
-func (ts *TokenStore) getTokenID(cname, token string) (tokenID string, err error) {
+func (ts *TokenStore) getBasicID(cname, token string) (basicID string, err error) {
 	ctx := context.Background()
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -525,7 +525,7 @@ func (ts *TokenStore) getTokenID(cname, token string) (tokenID string, err error
 		}
 		return
 	}
-	tokenID = td.TokenID
+	basicID = td.BasicID
 	return
 }
 
@@ -548,21 +548,21 @@ func (ts *TokenStore) GetByCode(ctx context.Context, code string) (ti oauth2.Tok
 
 // GetByAccess use the access token for token information data
 func (ts *TokenStore) GetByAccess(ctx context.Context, access string) (ti oauth2.TokenInfo, err error) {
-	tokenID, err := ts.getTokenID(ts.tcfg.AccessCName, access)
-	if err != nil && tokenID == "" {
+	basicID, err := ts.getBasicID(ts.tcfg.AccessCName, access)
+	if err != nil && basicID == "" {
 		return
 	}
-	ti, err = ts.getData(tokenID)
+	ti, err = ts.getData(basicID)
 	return
 }
 
 // GetByRefresh use the refresh token for token information data
 func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oauth2.TokenInfo, err error) {
-	tokenID, err := ts.getTokenID(ts.tcfg.RefreshCName, refresh)
-	if err != nil && tokenID == "" {
+	basicID, err := ts.getBasicID(ts.tcfg.RefreshCName, refresh)
+	if err != nil && basicID == "" {
 		return
 	}
-	ti, err = ts.getData(tokenID)
+	ti, err = ts.getData(basicID)
 	return
 }
 
@@ -626,6 +626,7 @@ func (ts *TokenStore) GetTokensByUserID(ctx context.Context, userID string) (tok
 	return
 }
 
+// GetEntryIDOfToken returns ID of the token entry in oauth2_basic Collection
 func (ts *TokenStore) GetEntryIDOfToken(ctx context.Context, tokenID string) (entryID string, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -669,6 +670,7 @@ type basicData struct {
 
 type tokenData struct {
 	ID        string    `bson:"_id"`
+	BasicID   string    `bson:"basic_id"`
 	TokenID   string    `bson:"token_id"`
 	ExpiredAt time.Time `bson:"expired_at"`
 }
