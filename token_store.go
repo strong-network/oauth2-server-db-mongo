@@ -457,7 +457,7 @@ func (ts *TokenStore) RemoveTokensByUserID(ctx context.Context, userID string) (
 	return
 }
 
-func (ts *TokenStore) getTokensByUserID(ctx context.Context, userID string) (tokens []OAuth2TokenUsageInfo, err error) {
+func (ts *TokenStore) getTokensByUserID(ctx context.Context, userID string) (tokens []*OAuth2TokenUsageInfo, err error) {
 	cursor, err := ts.c(ts.tcfg.BasicCName).Find(ctx, bson.D{{Key: "user_id", Value: userID}})
 	if err != nil {
 		log.Println("Error getTokensByUserID: ", err)
@@ -465,7 +465,7 @@ func (ts *TokenStore) getTokensByUserID(ctx context.Context, userID string) (tok
 	}
 	defer cursor.Close(ctx)
 
-	tokens = []OAuth2TokenUsageInfo{}
+	tokens = []*OAuth2TokenUsageInfo{}
 	for cursor.Next(ctx) {
 		var bd basicData
 		err = cursor.Decode(&bd)
@@ -531,11 +531,11 @@ func (ts *TokenStore) getBasicID(cname, token string) (basicID string, err error
 	return
 }
 
-func (ts *TokenStore) getTokenByTokenID(ctx context.Context, tokenID string) (token OAuth2TokenUsageInfo, err error) {
+func (ts *TokenStore) getTokenByTokenID(ctx context.Context, tokenID string) (token *OAuth2TokenUsageInfo, err error) {
 	var bd basicData
 	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "token_id", Value: tokenID}}).Decode(&bd)
 	if err != nil {
-		return OAuth2TokenUsageInfo{}, err
+		return nil, err
 	}
 
 	token, err = ts.convertBasicDataToTokenUsage(bd)
@@ -569,7 +569,7 @@ func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oaut
 }
 
 // GetTokensByUserID use the token ID to return token Information
-func (ts *TokenStore) GetTokenByTokenID(ctx context.Context, tokenID string) (token OAuth2TokenUsageInfo, err error) {
+func (ts *TokenStore) GetTokenByTokenID(ctx context.Context, tokenID string) (token *OAuth2TokenUsageInfo, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
@@ -581,7 +581,7 @@ func (ts *TokenStore) GetTokenByTokenID(ctx context.Context, tokenID string) (to
 }
 
 // GetTokenByAccess use the access token to return token Information
-func (ts *TokenStore) GetTokenByAccess(ctx context.Context, access string) (token OAuth2TokenUsageInfo, err error) {
+func (ts *TokenStore) GetTokenByAccess(ctx context.Context, access string) (token *OAuth2TokenUsageInfo, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
@@ -599,7 +599,7 @@ func (ts *TokenStore) GetTokenByAccess(ctx context.Context, access string) (toke
 }
 
 // GetTokenByRefresh use the refresh token return token Information
-func (ts *TokenStore) GetTokenByRefresh(ctx context.Context, refresh string) (token OAuth2TokenUsageInfo, err error) {
+func (ts *TokenStore) GetTokenByRefresh(ctx context.Context, refresh string) (token *OAuth2TokenUsageInfo, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
@@ -617,7 +617,7 @@ func (ts *TokenStore) GetTokenByRefresh(ctx context.Context, refresh string) (to
 }
 
 // GetTokensByUserID returns all tokens of the specified user
-func (ts *TokenStore) GetTokensByUserID(ctx context.Context, userID string) (tokens []OAuth2TokenUsageInfo, err error) {
+func (ts *TokenStore) GetTokensByUserID(ctx context.Context, userID string) (tokens []*OAuth2TokenUsageInfo, err error) {
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
 	if ctxReq != nil {
@@ -645,21 +645,24 @@ func (ts *TokenStore) GetEntryIDOfToken(ctx context.Context, tokenID string) (en
 	return bd.ID, nil
 }
 
-func (ts *TokenStore) convertBasicDataToTokenUsage(bd basicData) (tu OAuth2TokenUsageInfo, err error) {
-	tu.ID = bd.TokenID
-	err = json.Unmarshal(bd.Data, &tu)
+func (ts *TokenStore) convertBasicDataToTokenUsage(bd basicData) (*OAuth2TokenUsageInfo, error) {
+	tu := &OAuth2TokenUsageInfo{
+		ID: bd.TokenID,
+	}
+
+	err := json.Unmarshal(bd.Data, tu)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	if bd.UIData != nil && len(bd.UIData) > 0 {
-		err = json.Unmarshal(bd.UIData, &tu)
+		err = json.Unmarshal(bd.UIData, tu)
 		if err != nil {
-			return
+			return nil, err
 		}
 	}
 
-	return
+	return tu, nil
 }
 
 type basicData struct {
