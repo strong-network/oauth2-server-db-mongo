@@ -38,7 +38,7 @@ func TestTransaction(t *testing.T) {
 
 	accessData := tokenData{
 		ID:        "functionName",
-		BasicID:   "success",
+		TokenID:   "success",
 		ExpiredAt: time.Now(),
 	}
 
@@ -130,7 +130,7 @@ func TestTransaction(t *testing.T) {
 
 		Convey("Test insertTokenData(access) fail", func() {
 			accessData.ID = "insertTokenData"
-			accessData.BasicID = "fail"
+			accessData.TokenID = "fail"
 
 			err := store.txnHandler.runTransactionCreate(context.TODO(), info, basicData, accessData, "an id", time.Now())
 
@@ -144,7 +144,7 @@ func TestTransaction(t *testing.T) {
 			So(record[5], ShouldEqual, "removeTransactionData")
 			So(record[6], ShouldEqual, "removeTransactionData")
 
-			accessData.BasicID = "success"
+			accessData.TokenID = "success"
 			record = []string{}
 		})
 
@@ -272,13 +272,13 @@ func (mt *mockTransactionWorker) insertBasicTransactionData(ctx context.Context,
 func (mt *mockTransactionWorker) insertTokenData(ctx context.Context, tokenData tokenData, collectionName string) error {
 	record = append(record, "insertTokenData")
 	if tokenData.ID == "insertTokenData" {
-		if tokenData.BasicID == "fail" {
+		if tokenData.TokenID == "fail" {
 			return errors.New("insertTokenData")
 		}
 	} else if tokenData.ID == "insertTokenDataRefresh" && callNumber == 0 {
 		callNumber++
 	} else if tokenData.ID == "insertTokenDataRefresh" && callNumber == 1 {
-		if tokenData.BasicID == "fail" {
+		if tokenData.TokenID == "fail" {
 			return errors.New("insertTokenDataRefresh")
 		}
 	}

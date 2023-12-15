@@ -250,7 +250,6 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 	// Create the tokenData document for access
 	accessData := tokenData{
 		ID:        info.GetAccess(),
-		BasicID:   id,
 		TokenID:   tokenID,
 		ExpiredAt: aexp,
 	}
@@ -285,7 +284,6 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 			if refresh != "" {
 				refreshData := tokenData{
 					ID:        refresh,
-					BasicID:   id,
 					TokenID:   tokenID,
 					ExpiredAt: rexp,
 				}
@@ -310,7 +308,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 
 	} else {
 		// MongoDB is deployed as a single instance
-		return ts.txnHandler.runTransactionCreate(ctx, info, basicData, accessData, id, tokenID, rexp)
+		return ts.txnHandler.runTransactionCreate(ctx, info, basicData, accessData, tokenID, rexp)
 
 	}
 	return
@@ -485,7 +483,7 @@ func (ts *TokenStore) getTokensByUserID(ctx context.Context, userID string) (tok
 	return
 }
 
-func (ts *TokenStore) getData(basicID string) (ti oauth2.TokenInfo, err error) {
+func (ts *TokenStore) getData(tokenID string) (ti oauth2.TokenInfo, err error) {
 	ctx := context.Background()
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -494,7 +492,7 @@ func (ts *TokenStore) getData(basicID string) (ti oauth2.TokenInfo, err error) {
 	}
 
 	var bd basicData
-	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: basicID}}).Decode(&bd)
+	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "token_id", Value: tokenID}}).Decode(&bd)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
@@ -511,7 +509,7 @@ func (ts *TokenStore) getData(basicID string) (ti oauth2.TokenInfo, err error) {
 	return
 }
 
-func (ts *TokenStore) getBasicID(cname, token string) (basicID string, err error) {
+func (ts *TokenStore) getTokenID(cname, token string) (tokenID string, err error) {
 	ctx := context.Background()
 	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
 	defer cancel()
@@ -527,7 +525,7 @@ func (ts *TokenStore) getBasicID(cname, token string) (basicID string, err error
 		}
 		return
 	}
-	basicID = td.BasicID
+	tokenID = td.TokenID
 	return
 }
 
@@ -550,21 +548,21 @@ func (ts *TokenStore) GetByCode(ctx context.Context, code string) (ti oauth2.Tok
 
 // GetByAccess use the access token for token information data
 func (ts *TokenStore) GetByAccess(ctx context.Context, access string) (ti oauth2.TokenInfo, err error) {
-	basicID, err := ts.getBasicID(ts.tcfg.AccessCName, access)
-	if err != nil && basicID == "" {
+	tokenID, err := ts.getTokenID(ts.tcfg.AccessCName, access)
+	if err != nil && tokenID == "" {
 		return
 	}
-	ti, err = ts.getData(basicID)
+	ti, err = ts.getData(tokenID)
 	return
 }
 
 // GetByRefresh use the refresh token for token information data
 func (ts *TokenStore) GetByRefresh(ctx context.Context, refresh string) (ti oauth2.TokenInfo, err error) {
-	basicID, err := ts.getBasicID(ts.tcfg.RefreshCName, refresh)
-	if err != nil && basicID == "" {
+	tokenID, err := ts.getTokenID(ts.tcfg.RefreshCName, refresh)
+	if err != nil && tokenID == "" {
 		return
 	}
-	ti, err = ts.getData(basicID)
+	ti, err = ts.getData(tokenID)
 	return
 }
 
@@ -665,7 +663,7 @@ func (ts *TokenStore) convertBasicDataToTokenUsage(bd basicData) (*OAuth2TokenUs
 	return tu, nil
 }
 
-type basicData struct {
+type  basicData struct {
 	ID        string    `bson:"_id"`
 	TokenID   string    `bson:"token_id"`
 	UserID    string    `bson:"user_id"`
@@ -676,7 +674,6 @@ type basicData struct {
 
 type tokenData struct {
 	ID        string    `bson:"_id"`
-	BasicID   string    `bson:"basic_id"`
 	TokenID   string    `bson:"token_id"`
 	ExpiredAt time.Time `bson:"expired_at"`
 }
