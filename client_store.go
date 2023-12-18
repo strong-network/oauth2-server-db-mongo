@@ -228,6 +228,40 @@ func (cs *ClientStore) GetByID(ctx context.Context, id string) (info oauth2.Clie
 	return
 }
 
+// GetClientNames returns names of all user IDs
+func (cs *ClientStore) GetAllClients(ctx context.Context) (clients []oauth2.ClientInfo, err error) {
+	ctxReq, cancel := cs.ccfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	filter := bson.D{}
+	cursor, err := cs.c(cs.ccfg.ClientsCName).Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		entity := &client{}
+		if err := cursor.Decode(&entity); err != nil {
+			log.Println(err)
+			continue
+		}
+
+		client := &models.Client{
+			ID:     entity.ID,
+			Secret: entity.Secret,
+			Domain: entity.Domain,
+			UserID: entity.UserID,
+		}
+
+		clients = append(clients, client)
+	}
+	return
+}
+
 // RemoveByID use the client id to delete the client information
 func (cs *ClientStore) RemoveByID(id string) (err error) {
 	ctx := context.Background()
