@@ -9,6 +9,7 @@ import (
 	"github.com/go-oauth2/oauth2/v4"
 	"github.com/go-oauth2/oauth2/v4/models"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
@@ -233,9 +234,12 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 		}
 	}
 
+	id := primitive.NewObjectID().Hex()
+
 	// Create the basicData document
 	basicData := basicData{
-		ID:        tokenID,
+		ID:        id,
+		TokenID:   tokenID,
 		UserID:    info.GetUserID(),
 		Data:      jv,
 		UIData:    uiData,
@@ -318,7 +322,7 @@ func (ts *TokenStore) removeTokenByTokenID(ctx context.Context, tokenID string) 
 	if err != nil {
 		log.Println("Error removeTokenByTokenID: ", err)
 	}
-	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "_id", Value: tokenID}})
+	_, err = ts.c(ts.tcfg.BasicCName).DeleteOne(ctx, bson.D{{Key: "token_id", Value: tokenID}})
 	if err != nil {
 		log.Println("Error removeTokenByTokenID: ", err)
 	}
@@ -442,7 +446,7 @@ func (ts *TokenStore) RemoveTokensByUserID(ctx context.Context, userID string) (
 			continue
 		}
 
-		err = ts.removeTokenByTokenID(ctx, bd.ID)
+		err = ts.removeTokenByTokenID(ctx, bd.TokenID)
 		if err != nil {
 			log.Println("Error RemoveTokensByUserID: ", err)
 		}
@@ -621,9 +625,27 @@ func (ts *TokenStore) GetTokensByUserID(ctx context.Context, userID string) (tok
 	return
 }
 
+// GetEntryIDOfToken returns ID of the token entry in oauth2_basic collection
+func (ts *TokenStore) GetEntryIDOfToken(ctx context.Context, tokenID string) (entryID string, err error) {
+	ctxReq, cancel := ts.tcfg.storeConfig.setRequestContext()
+	defer cancel()
+	if ctxReq != nil {
+		ctx = ctxReq
+	}
+
+	var bd basicData
+	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "token_id", Value: tokenID}}).Decode(&bd)
+	if err != nil {
+		return "", err
+	}
+
+	return bd.ID, nil
+}
+
 func (ts *TokenStore) convertBasicDataToTokenUsage(bd basicData) (*OAuth2TokenUsageInfo, error) {
 	tu := &OAuth2TokenUsageInfo{
-		ID: bd.ID,
+		ID:        bd.TokenID,
+		ExpiresAt: bd.ExpiredAt,
 	}
 
 	err := json.Unmarshal(bd.Data, tu)
@@ -643,6 +665,7 @@ func (ts *TokenStore) convertBasicDataToTokenUsage(bd basicData) (*OAuth2TokenUs
 
 type basicData struct {
 	ID        string    `bson:"_id"`
+	TokenID   string    `bson:"token_id"`
 	UserID    string    `bson:"user_id"`
 	Data      []byte    `bson:"data"`
 	UIData    []byte    `bson:"ui_data"`
@@ -658,6 +681,7 @@ type tokenData struct {
 type UIData struct {
 	Device     string    `bson:"device_name,omitempty"`
 	DeviceOS   string    `bson:"device_os,omitempty"`
+	IDEType    int32     `bson:"ide_type,omitempty"`
 	CreatedAt  time.Time `bson:"created_at,omitempty"`
 	LastUsedAt time.Time `bson:"last_used_at,omitempty"`
 }
@@ -666,8 +690,10 @@ type OAuth2TokenUsageInfo struct {
 	ID             string    `bson:"token_id"`
 	UserID         string    `bson:"user_id"`
 	ClientID       string    `bson:"ClientID,omitempty"`
+	IDEType        int32     `bson:"ide_type,omitempty"`
 	Device         string    `bson:"device_name,omitempty"`
 	DeviceOS       string    `bson:"device_os,omitempty"`
 	AccessCreateAt time.Time `bson:"AccessCreateAt,omitempty"`
 	LastUsedAt     time.Time `bson:"last_used_at,omitempty"`
+	ExpiresAt      time.Time `bson:"expired_at,omitempty"`
 }
