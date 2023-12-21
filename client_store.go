@@ -166,6 +166,12 @@ func (cs *ClientStore) c(name string) *mongo.Collection {
 
 // Create create client information
 func (cs *ClientStore) Create(info oauth2.ClientInfo) (err error) {
+	cs.CreateExtended(info, "")
+	return
+}
+
+// Create create client information
+func (cs *ClientStore) CreateExtended(info oauth2.ClientInfo, name string) (err error) {
 	ctx := context.Background()
 
 	ctxReq, cancel := cs.ccfg.storeConfig.setRequestContext()
@@ -179,6 +185,7 @@ func (cs *ClientStore) Create(info oauth2.ClientInfo) (err error) {
 		Secret: info.GetSecret(),
 		Domain: info.GetDomain(),
 		UserID: info.GetUserID(),
+		Name:   name,
 	}
 
 	collection := cs.c(cs.ccfg.ClientsCName)
@@ -277,9 +284,11 @@ func (cs *ClientStore) RemoveByID(id string) (err error) {
 	return err
 }
 
+// Icon is also required here
 type client struct {
 	ID     string `bson:"_id"`
 	Secret string `bson:"secret"`
 	Domain string `bson:"domain"`
-	UserID string `bson:"userid"`
+	UserID string `bson:"user_id"`
+	Name   string `bson:"name"`
 }
