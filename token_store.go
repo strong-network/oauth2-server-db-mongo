@@ -211,6 +211,7 @@ func (ts *TokenStore) Create(ctx context.Context, info oauth2.TokenInfo) (err er
 		// Create the basicData document
 		basicData := basicData{
 			ID:        code,
+			TokenID:   code,
 			UserID:    info.GetUserID(),
 			Data:      jv,
 			UIData:    uiData,
