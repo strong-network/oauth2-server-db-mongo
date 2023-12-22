@@ -530,7 +530,7 @@ func (ts *TokenStore) getTokenID(cname, token string) (tokenID string, err error
 
 func (ts *TokenStore) getTokenByTokenID(ctx context.Context, tokenID string) (token *OAuth2TokenUsageInfo, err error) {
 	var bd basicData
-	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "_id", Value: tokenID}}).Decode(&bd)
+	err = ts.c(ts.tcfg.BasicCName).FindOne(ctx, bson.D{{Key: "token_id", Value: tokenID}}).Decode(&bd)
 	if err != nil {
 		return nil, err
 	}
@@ -645,7 +645,7 @@ func (ts *TokenStore) GetEntryIDOfToken(ctx context.Context, tokenID string) (en
 func (ts *TokenStore) convertBasicDataToTokenUsage(bd basicData) (*OAuth2TokenUsageInfo, error) {
 	tu := &OAuth2TokenUsageInfo{
 		ID:        bd.TokenID,
-		ExpiresAt: bd.ExpiredAt,
+		ExpiredAt: bd.ExpiredAt,
 	}
 
 	err := json.Unmarshal(bd.Data, tu)
@@ -695,5 +695,5 @@ type OAuth2TokenUsageInfo struct {
 	DeviceOS       string    `bson:"device_os,omitempty"`
 	AccessCreateAt time.Time `bson:"AccessCreateAt,omitempty"`
 	LastUsedAt     time.Time `bson:"last_used_at,omitempty"`
-	ExpiresAt      time.Time `bson:"expired_at,omitempty"`
+	ExpiredAt      time.Time `bson:"expired_at,omitempty"`
 }
