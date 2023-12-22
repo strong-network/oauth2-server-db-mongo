@@ -166,12 +166,6 @@ func (cs *ClientStore) c(name string) *mongo.Collection {
 
 // Create create client information
 func (cs *ClientStore) Create(info oauth2.ClientInfo) (err error) {
-	cs.CreateExtended(info, "")
-	return
-}
-
-// Create create client information
-func (cs *ClientStore) CreateExtended(info oauth2.ClientInfo, name string) (err error) {
 	ctx := context.Background()
 
 	ctxReq, cancel := cs.ccfg.storeConfig.setRequestContext()
@@ -185,7 +179,6 @@ func (cs *ClientStore) CreateExtended(info oauth2.ClientInfo, name string) (err 
 		Secret: info.GetSecret(),
 		Domain: info.GetDomain(),
 		UserID: info.GetUserID(),
-		Name:   name,
 	}
 
 	collection := cs.c(cs.ccfg.ClientsCName)
@@ -235,40 +228,6 @@ func (cs *ClientStore) GetByID(ctx context.Context, id string) (info oauth2.Clie
 	return
 }
 
-// GetClientNames returns names of all user IDs
-func (cs *ClientStore) GetAllClients(ctx context.Context) (clients []oauth2.ClientInfo, err error) {
-	ctxReq, cancel := cs.ccfg.storeConfig.setRequestContext()
-	defer cancel()
-	if ctxReq != nil {
-		ctx = ctxReq
-	}
-
-	filter := bson.D{}
-	cursor, err := cs.c(cs.ccfg.ClientsCName).Find(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	for cursor.Next(ctx) {
-		entity := &client{}
-		if err := cursor.Decode(&entity); err != nil {
-			log.Println(err)
-			continue
-		}
-
-		client := &models.Client{
-			ID:     entity.ID,
-			Secret: entity.Secret,
-			Domain: entity.Domain,
-			UserID: entity.UserID,
-		}
-
-		clients = append(clients, client)
-	}
-	return
-}
-
 // RemoveByID use the client id to delete the client information
 func (cs *ClientStore) RemoveByID(id string) (err error) {
 	ctx := context.Background()
@@ -290,5 +249,4 @@ type client struct {
 	Secret string `bson:"secret"`
 	Domain string `bson:"domain"`
 	UserID string `bson:"user_id"`
-	Name   string `bson:"name"`
 }
