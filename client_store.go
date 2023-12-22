@@ -243,10 +243,9 @@ func (cs *ClientStore) RemoveByID(id string) (err error) {
 	return err
 }
 
-// Icon is also required here
 type client struct {
 	ID     string `bson:"_id"`
 	Secret string `bson:"secret"`
 	Domain string `bson:"domain"`
-	UserID string `bson:"user_id"`
+	UserID string `bson:"userid"`
 }
