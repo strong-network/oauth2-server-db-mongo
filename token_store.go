@@ -680,9 +680,8 @@ type tokenData struct {
 }
 
 type UIData struct {
-	Device     string    `bson:"device_name,omitempty"`
-	DeviceOS   string    `bson:"device_os,omitempty"`
-	IDEType    int32     `bson:"ide_type,omitempty"`
+	Device     string    `bson:"Device,omitempty"`
+	DeviceOS   string    `bson:"osType,omitempty"`
 	CreatedAt  time.Time `bson:"created_at,omitempty"`
 	LastUsedAt time.Time `bson:"last_used_at,omitempty"`
 }
@@ -691,7 +690,6 @@ type OAuth2TokenUsageInfo struct {
 	ID             string    `bson:"token_id"`
 	UserID         string    `bson:"user_id"`
 	ClientID       string    `bson:"ClientID,omitempty"`
-	IDEType        int32     `bson:"ide_type,omitempty"`
 	Device         string    `bson:"device_name,omitempty"`
 	DeviceOS       string    `bson:"device_os,omitempty"`
 	AccessCreateAt time.Time `bson:"AccessCreateAt,omitempty"`
