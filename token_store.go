@@ -680,8 +680,8 @@ type tokenData struct {
 }
 
 type UIData struct {
-	Device     string    `bson:"Device,omitempty"`
-	DeviceOS   string    `bson:"osType,omitempty"`
+	Device     string    `json:"Device" bson:"device,omitempty"`
+	DeviceOS   string    `json:"osType" bson:"os_type,omitempty"`
 	CreatedAt  time.Time `bson:"created_at,omitempty"`
 	LastUsedAt time.Time `bson:"last_used_at,omitempty"`
 }
