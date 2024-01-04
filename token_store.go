@@ -687,12 +687,12 @@ type UIData struct {
 }
 
 type OAuth2TokenUsageInfo struct {
-	ID             string    `bson:"token_id"`
-	UserID         string    `bson:"user_id"`
-	ClientID       string    `bson:"ClientID,omitempty"`
-	Device         string    `bson:"device_name,omitempty"`
-	DeviceOS       string    `bson:"device_os,omitempty"`
-	AccessCreateAt time.Time `bson:"AccessCreateAt,omitempty"`
-	LastUsedAt     time.Time `bson:"last_used_at,omitempty"`
-	ExpiredAt      time.Time `bson:"expired_at,omitempty"`
+	ID         string    `bson:"token_id"`
+	UserID     string    `bson:"user_id"`
+	ClientID   string    `bson:"ClientID,omitempty"`
+	Device     string    `bson:"device_name,omitempty"`
+	DeviceOS   string    `bson:"device_os,omitempty"`
+	CreatedAt  time.Time `bson:"created_at,omitempty"`
+	LastUsedAt time.Time `bson:"last_used_at,omitempty"`
+	ExpiredAt  time.Time `bson:"expired_at,omitempty"`
 }
