@@ -49,7 +49,6 @@ func NewDefaultStoreConfig(db, service string, isReplicasSet bool) *StoreConfig 
 func (sc *StoreConfig) setRequestContext() (context.Context, context.CancelFunc) {
 	ctx := context.Background()
 	if sc.requestTimeout > 0 {
-		log.Println("Request timeout: ", sc.requestTimeout)
 		timeout := time.Duration(sc.requestTimeout) * time.Second
 		return context.WithTimeout(ctx, timeout)
 	}
