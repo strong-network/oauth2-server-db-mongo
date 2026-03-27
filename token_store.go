@@ -3,6 +3,8 @@ package mongo
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -17,6 +19,10 @@ import (
 
 const (
 	UserAgentKey = "User-Agent-Sn"
+
+	// codeIndexKeySpecsConflict is the MongoDB error code returned when an
+	// index already exists with a different spec for the same key pattern.
+	codeIndexKeySpecsConflict = 86
 )
 
 // TokenConfig token configuration parameters
@@ -122,28 +128,15 @@ func NewTokenStoreWithSession(client *mongo.Client, cfg *Config, scfgs ...*Store
 		}
 	}
 
-	_, err := ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.BasicCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
+	ttlIndex := mongo.IndexModel{
 		Keys:    bson.D{{"expired_at", 1}},
 		Options: options.Index().SetExpireAfterSeconds(1),
-	})
-	if err != nil {
-		log.Fatalln("Error creating index: ", ts.tcfg.BasicCName, " - ", err)
 	}
 
-	_, err = ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.AccessCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
-		Keys:    bson.D{{"expired_at", 1}},
-		Options: options.Index().SetExpireAfterSeconds(1),
-	})
-	if err != nil {
-		log.Fatalln("Error creating index: ", ts.tcfg.AccessCName, " - ", err)
-	}
-
-	_, err = ts.client.Database(ts.tcfg.storeConfig.db).Collection(ts.tcfg.RefreshCName).Indexes().CreateOne(context.TODO(), mongo.IndexModel{
-		Keys:    bson.D{{"expired_at", 1}},
-		Options: options.Index().SetExpireAfterSeconds(1),
-	})
-	if err != nil {
-		log.Fatalln("Error creating index: ", ts.tcfg.RefreshCName, " - ", err)
+	for _, colName := range []string{ts.tcfg.BasicCName, ts.tcfg.AccessCName, ts.tcfg.RefreshCName} {
+		if err := ensureTTLIndex(ts.client.Database(ts.tcfg.storeConfig.db).Collection(colName), ttlIndex); err != nil {
+			log.Fatalln("Error creating index: ", colName, " - ", err)
+		}
 	}
 
 	store = ts
@@ -155,6 +148,30 @@ type TokenStore struct {
 	tcfg       *TokenConfig
 	client     *mongo.Client
 	txnHandler *transactionHandler
+}
+
+// ensureTTLIndex creates a TTL index on the collection. If the index already
+// exists but with a different spec (e.g. after a database engine upgrade that
+// changes the index storage options), it drops the conflicting index and
+// retries the creation.
+func ensureTTLIndex(col *mongo.Collection, model mongo.IndexModel) error {
+	_, err := col.Indexes().CreateOne(context.TODO(), model)
+	if err == nil {
+		return nil
+	}
+
+	// IndexKeySpecsConflict (code 86): existing index has a different spec
+	// for the same key pattern. Drop it and recreate.
+	var cmdErr mongo.CommandError
+	if errors.As(err, &cmdErr) && cmdErr.Code == codeIndexKeySpecsConflict {
+		log.Printf("Index spec conflict on %s, dropping and recreating TTL index", col.Name())
+		_, dropErr := col.Indexes().DropOne(context.TODO(), "expired_at_1")
+		if dropErr != nil {
+			return fmt.Errorf("failed to drop conflicting index on %s: %w", col.Name(), dropErr)
+		}
+		_, err = col.Indexes().CreateOne(context.TODO(), model)
+	}
+	return err
 }
 
 // Close close the mongo session
