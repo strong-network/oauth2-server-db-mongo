@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"time"
 
@@ -20,6 +19,8 @@ import (
 const (
 	UserAgentKey = "User-Agent-Sn"
 
+	// codeIndexAlreadyExists is returned when another node recreated the index first.
+	codeIndexAlreadyExists = 68
 	// codeIndexKeySpecsConflict is the MongoDB error code returned when an
 	// index already exists with a different spec for the same key pattern.
 	codeIndexKeySpecsConflict = 86
@@ -150,28 +151,25 @@ type TokenStore struct {
 	txnHandler *transactionHandler
 }
 
-// ensureTTLIndex creates a TTL index on the collection. If the index already
-// exists but with a different spec (e.g. after a database engine upgrade that
-// changes the index storage options), it drops the conflicting index and
-// retries the creation.
+// ensureTTLIndex creates a TTL index on the collection. If an older TTL index
+// already exists with a different spec, keep using it instead of failing
+// startup.
 func ensureTTLIndex(col *mongo.Collection, model mongo.IndexModel) error {
 	_, err := col.Indexes().CreateOne(context.TODO(), model)
-	if err == nil {
+	if err == nil || hasMongoErrorCode(err, codeIndexAlreadyExists) {
 		return nil
 	}
 
-	// IndexKeySpecsConflict (code 86): existing index has a different spec
-	// for the same key pattern. Drop it and recreate.
-	var cmdErr mongo.CommandError
-	if errors.As(err, &cmdErr) && cmdErr.Code == codeIndexKeySpecsConflict {
-		log.Printf("Index spec conflict on %s, dropping and recreating TTL index", col.Name())
-		_, dropErr := col.Indexes().DropOne(context.TODO(), "expired_at_1")
-		if dropErr != nil {
-			return fmt.Errorf("failed to drop conflicting index on %s: %w", col.Name(), dropErr)
-		}
-		_, err = col.Indexes().CreateOne(context.TODO(), model)
+	if hasMongoErrorCode(err, codeIndexKeySpecsConflict) {
+		log.Printf("Index spec conflict on %s, keeping existing TTL index", col.Name())
+		return nil
 	}
 	return err
+}
+
+func hasMongoErrorCode(err error, code int) bool {
+	var serverErr mongo.ServerError
+	return errors.As(err, &serverErr) && serverErr.HasErrorCode(code)
 }
 
 // Close close the mongo session
